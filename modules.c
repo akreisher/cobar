@@ -270,60 +270,47 @@ void *vol_block(void *input) {
 }
 
 
+/* void *systray(void *input) { */
+/*   char buf[256], desktop[64]; */
+/*   FILE *systray, *xdo; */
+/*   int fifo, width, height, pos_x, pos_y; */
+/*   unsigned long systray_wid; */
+/*   float temp; */
+
+/*   tray_arg* arg; */
+/*   block_input* in; */
+/*   block_output out; */
+
+/*   in = (block_input *) input; */
+/*   arg = (tray_arg *) in->arg; */
+/*   out.id = in->id; */
+/*   out.data = buf; */
 
 
-void *systray(void *input) {
-  char buf[256], desktop[64];
-  FILE *systray, *xdo;
-  int fifo, width, height, pos_x, pos_y;
-  unsigned long systray_wid;
-  float temp;
-
-  tray_arg* arg;
-  block_input* in;
-  block_output out;
-
-  in = (block_input *) input;
-  arg = (tray_arg *) in->arg;
-  out.id = in->id;
-  out.data = buf;
+/*   snprintf(buf, 256, */
+/*            "stalonetray --geometry 1x1+%d-%d -i %d \ */
+/*            --grow-direction W --log-level info \ */
+/*            --kludges fix_window_pos,force_icons_size,use_icons_hints", */
+/* 	   arg->x_pos, arg->y_pos, arg->icon_size); */
   
+/*   systray = popen(buf, "r"); */
+
+/*   // Get id */
+/*   xdo = popen("xdo id -a cobar", "r"); */
+/*   fscanf(xdo, "%lx", &systray_wid); */
+/*   pclose(xdo); */
   
-  snprintf(buf, 256,
-	   "stalonetray --geometry 1x1+%d-%d --log-level info --grow-direction W --kludges fix_window_pos, force_icons_size,use_icons_hints -i %d  ",
-	   arg->x_pos, arg->y_pos, arg->icon_size);
-  
-  systray = popen(buf, "r");
-  
-  // xdo = popen("xwininfo -name stalonetray", "r");
-  // fscanf(xdo, "%lx", &systray_wid);
-  
-  while (1) {
+/*   while (1) { */
 
-    // read in
-    printf("ohew1\n");
+/*     // read input from tray */
+/*     fgets(buf, 128, systray); */
+/*     printf("%s\n", buf); */
+/*     if ( sscanf(buf, "geometry: %dx%d+%d+%d", */
+/* 		&width, &height, &pos_x, &pos_y) == 4 ) { */
+/*       // Write new geometry to bar */
+/*       out.flags = BAR_RESIZE; */
+/*       write(fifo, &out, sizeof(out)); */
+/*     } */
+/*   } */
+/* } */
 
-    fgets(buf, 128, systray);
-    printf("%s\n", buf);
-    if ( sscanf(buf, "geometry: %dx%d+%d+%d",
-		&width, &height, &pos_x, &pos_y) == 4 ) {
-
-      printf("Yes\n");
-      
-    }
-	
-    
-    // read in until done
-    
-    // Get window size
-
-    // update size
-
-    //
-    
-
-  }
-  
-  
-
-}

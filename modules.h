@@ -4,6 +4,11 @@
 /* Name of pipe to bar */
 #define FIFO "/tmp/bar-fifo"
 
+/* Output Flags */
+#define BAR_RESIZE 1
+
+
+
 typedef struct bar_module {
   void *(*func) (void *);
   void *arg;
@@ -17,6 +22,7 @@ typedef struct block_input {
 
 typedef struct block_output {
   int id;
+  int flags;
   char *data;
 } block_output;
 

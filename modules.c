@@ -140,7 +140,9 @@ void *desktop_block (void *input) {
 
   while (1) {
 
-    fscanf(bspc_sub, "desktop_focus %lx %lx", &monitor_id, &desktop_id);
+    fgets(buf, 128, bspc_sub);
+
+    sscanf(buf, "desktop_focus %lx %lx", &monitor_id, &desktop_id);
     bspc_query = popen("bspc query --names -D -d", "r");
     fgets(desktop, 64, bspc_query);
     pclose(bspc_query);

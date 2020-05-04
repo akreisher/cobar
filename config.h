@@ -3,6 +3,8 @@
 #include <stddef.h>
 #include "modules.h"
 
+// #define DEBUG
+
 /* SETTINGS */
 
 
@@ -21,7 +23,7 @@ clock_arg clock_args = {
 };
   
 cpu_arg cpu_args = {
-  .dt = 1,
+  .dt = 2,
 };
 
 mem_arg mem_args = {
@@ -29,7 +31,7 @@ mem_arg mem_args = {
 };
 
 temp_arg temp_args = {
-    .dt = 1,
+    .dt = 2,
     .T_crit = 90,
     .T_warn = 70,
     .chip = "k10temp-pci-00c3",
@@ -37,6 +39,10 @@ temp_arg temp_args = {
 
 temp_arg vol_args = {
     .dt = 5,
+};
+
+desktop_arg desktop_args = {
+  .num_desktops = 10,
 };
 
 
@@ -50,14 +56,14 @@ temp_arg vol_args = {
 
 
 bar_module lblocks[] = {
-        {desktop_block, NULL, NULL},
+  {desktop_block, (void *)&desktop_args, -1, NULL},
 };
 
 bar_module rblocks[] = {
-  {vol_block, (void *)&vol_args, NULL},
-  {temp_block, (void *)&temp_args, NULL},
-  {cpu_block, (void *)&cpu_args, NULL},
-  { clock_block,  (void *) &clock_args,  NULL },
+  {vol_block, (void *)&vol_args, 2, NULL},
+  {temp_block, (void *)&temp_args, -1, NULL},
+  {cpu_block, (void *)&cpu_args, -1, NULL},
+  { clock_block,  (void *) &clock_args,  -1, NULL },
   // { mem_block,    (void *) &mem_args,    NULL },
   // { tray_block,   (void *) &tray_args,   NULL },
 };

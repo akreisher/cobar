@@ -8,15 +8,16 @@
 #define BAR_RESIZE 1
 
 
-
 typedef struct bar_module {
   void *(*func) (void *);
   void *arg;
+  int sig_num;
   char *data;
 } bar_module;
 
 typedef struct block_input {
   int id;
+  int sig_pipe;
   void *arg;
 } block_input;
 
@@ -47,6 +48,9 @@ void *cpu_block(void *input);
 
 
 /*           DESKTOP         */
+typedef struct desktop_arg {
+  int num_desktops;
+} desktop_arg;
 void *desktop_block(void *input);
 
 

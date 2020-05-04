@@ -105,50 +105,81 @@ void *cpu_block (void *input) {
 
 struct desktop_info {
   unsigned long int id;
-  char name[32];
+  char name[16];
 };
+
+void get_desktop_info(struct desktop_info *dts, int nd) {
+  int i = 0;
+  FILE *fd_id, *fd_names;
+
+  fd_id    = popen("bspc query -D", "r");
+  fd_names = popen("bspc query --names -D", "r");
+  while (fscanf(fd_id, "%lx", &dts[i].id)
+	 && fgets(dts[i].name, 16, fd_names)
+	 && i < nd) {
+    dts[i].name[strcspn(dts[i].name, "\r\n")] = '\0';
+    i++;
+  }
+  pclose(fd_id);
+  pclose(fd_names);
+}
+
+
+void get_desktop_output(const struct desktop_info * dts,
+			int nd,
+			unsigned long int focused,
+			char *out) {
+  int i, offset = 0;
+  for (i = 0; i < nd; i++) {
+    if (dts[i].id == focused) {
+	out[offset++] = '[';
+	strncpy(out + offset, dts[i].name, 16);
+	offset += strlen(dts[i].name);
+	out[offset++] = ']';
+      }
+      else {
+	strncpy(out + offset, dts[i].name, 16);
+	offset += strlen(dts[i].name);
+      }
+    out[offset++] = ' ';
+  }
+}
+
 
 void *desktop_block (void *input) {
 
-  char buf[128], desktop[64];
+  char buf[128], desktop[128];
   FILE *bspc_sub, *bspc_query;
   int fifo, len;
   unsigned long int monitor_id, desktop_id;
-  float temp;
 
   block_input *in;
+  desktop_arg *arg;
   block_output out;
 
-  struct desktop_info desktops[10];
-
   in = (block_input *) input;
+  arg = (desktop_arg *) in->arg;
   out.id = in->id;
   out.data = buf;
-  
+
+  struct desktop_info desktops[arg->num_desktops];
+  get_desktop_info(desktops, arg->num_desktops);
+
   fifo = open(FIFO, O_WRONLY);
 
   // Initial desktop
-  bspc_query = popen("bspc query --names -D -d", "r");
-  fgets(desktop, 128, bspc_query);
+  bspc_query = popen("bspc query -D -d", "r");
+  fscanf(bspc_query, "%lx", &desktop_id);
   pclose(bspc_query);
-  desktop[strcspn(desktop, "\r\n")] = '\0';
+  get_desktop_output(desktops, arg->num_desktops, desktop_id, desktop);
   sprintf(buf, "%%{F#FFFFFF} %s %%{F-}%%{B-}", desktop);
   write(fifo, &out, sizeof(out));
-  
-  
+
   bspc_sub = popen("bspc subscribe desktop_focus", "r");
-
   while (1) {
-
-    fgets(buf, 128, bspc_sub);
-
-    sscanf(buf, "desktop_focus %lx %lx", &monitor_id, &desktop_id);
-    bspc_query = popen("bspc query --names -D -d", "r");
-    fgets(desktop, 64, bspc_query);
-    pclose(bspc_query);
-    
-    desktop[strcspn(desktop, "\r\n")] = '\0';
-    
+    fgets(desktop, 128, bspc_sub);
+    sscanf(desktop, "desktop_focus %lx %lx", &monitor_id, &desktop_id);
+    get_desktop_output(desktops, arg->num_desktops, desktop_id, desktop);
     sprintf(buf, "%%{F#FFFFFF} %s %%{F-}%%{B-}", desktop);
     write(fifo, &out, sizeof(out));
   }
@@ -243,7 +274,7 @@ void *vol_block(void *input) {
   
   char buf[128];
   FILE *pulse;
-  int fifo;
+  int fifo, pipe;
   int vol1, vol2;
 
   vol_arg* arg;
@@ -252,6 +283,7 @@ void *vol_block(void *input) {
 
   in = (block_input *) input;
   arg = (vol_arg *) in->arg;
+  pipe = in->sig_pipe;
   out.id = in->id;
   out.data = buf;
 
@@ -265,7 +297,8 @@ void *vol_block(void *input) {
     
     sprintf(buf, " VOL %d ", vol1);
     write(fifo, &out, sizeof(out));
-    sleep(arg->dt);
+    usleep(2000);
+    read(pipe, buf, 1);
   }
 
   

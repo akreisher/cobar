@@ -1,35 +1,43 @@
 #ifndef MODULE_H_
 #define MODULE_H_
+#include <pthread.h>
 
-/* Name of pipe to bar */
-#define FIFO "/tmp/bar-fifo"
+// Config definition of a module
+typedef struct block_def {
+  void *(*func) (void *);  // Function
+  void *arg;  // Function arguments
+  int sigrt_num;  // Signal to handle
+} block_def;
 
-/* Output Flags */
-#define BAR_RESIZE 1
-
-
-typedef struct bar_module {
-  void *(*func) (void *);
-  void *arg;
-  int sig_num;
-  char *data;
-} bar_module;
-
+// Input to a block module
 typedef struct block_input {
   int id;
+  int *in_pipe;
+  int *out_pipe;
   int sig_pipe;
-  void *arg;
+  void *arg;  // Block-specific
 } block_input;
 
+// A module object
+typedef struct block_module {
+  const block_def *def;
+  block_input input;
+  pthread_t thread;
+  int in_pipe[2];  // 0: read; 1: write
+  int out_pipe[2];  // 0: read; 1: write
+  char data[512];
+} block_module;
+
+// Output of a block module
 typedef struct block_output {
   int id;
-  int flags;
-  char *data;
+  int fd;
+  char data[512];
 } block_output;
 
 
-/***********BLOCKS************/
 
+/***********BLOCKS************/
 
 /*           CLOCK           */
 typedef struct clock_arg {
@@ -43,6 +51,7 @@ void *clock_block(void *input);
 /*             CPU           */
 typedef struct cpu_arg {
   int dt;
+  float cpu_crit, cpu_warn;
 } cpu_arg;
 void *cpu_block(void *input);
 

@@ -1,9 +1,9 @@
-#include <fcntl.h> 
+#include <fcntl.h>
 #include <libgen.h>
 #include <time.h>
 #include <pthread.h>
-#include <string.h> 
-#include <sys/stat.h> 
+#include <string.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,51 +12,47 @@
 
 #include "modules.h"
 
+static void init_output(const block_input *input, block_output *output) {
+  output->id = input->id;
+  output->fd = input->out_pipe[1];
+}
+
+static void write_data(const block_output *output) {
+  write(output->fd, output, sizeof(block_output));
+}
 
 void *clock_block (void *input) {
-  char buf[128];
-  int fifo;
   time_t t;
 
-  block_input *in;
-  clock_arg *arg;
   block_output out;
+  block_input *in = (block_input *) input;
+  clock_arg *arg = (clock_arg *) in->arg;
+  init_output(in, &out);
 
-  in = (block_input *) input;
-  arg = (clock_arg *) in->arg;
-  out.id = in->id;
-  out.data = buf;
-
-  fifo = open(FIFO, O_WRONLY);
-  
   while (1) {
     t = time(NULL);
-    strftime(buf, 128, arg->time_format, localtime(&t));
-    write(fifo, &out, sizeof(out));
+    strftime(out.data, 64, arg->time_format, localtime(&t));
+    write_data(&out);
     sleep(arg->dt);
   }
-  close(fifo);
 }
 
 /* CPU Usage */
 void *cpu_block (void *input) {
 
-  char buf[128];
+  char *color;
   FILE *cpuinfo;
-  int fifo;
   unsigned long long int user, nice, sys, idle, iowait, irq, sirq, \
     steal, guest, nguest, in_use, total, old_in_use, old_total;
+  float percent;
 
   block_input *in;
-  cpu_arg *arg;
   block_output out;
+  cpu_arg *arg;
 
   in = (block_input *) input;
   arg = (cpu_arg *) in->arg;
-  out.id = in->id;
-  out.data = buf;
-  
-  fifo = open(FIFO, O_WRONLY);
+  init_output(in, &out);
 
   cpuinfo = fopen("/proc/stat", "r");
 
@@ -89,17 +85,22 @@ void *cpu_block (void *input) {
 
     in_use = user + nice + sys + irq + sirq + steal + guest + nguest;
     total = in_use + idle + iowait;
-    
-    sprintf(buf, "%%{F#FFFFFF} CPU %.1lf%% %%{F-}%%{B-}",
-	     100.0f * (in_use - old_in_use) / (float) (total - old_total));
-    write(fifo, &out, sizeof(out));
+
+    percent = 100.0f * (in_use - old_in_use) / (float) (total - old_total);
+
+    // Get color
+    if      (percent > arg->cpu_crit)  color = "%{F#FF0000}";
+    else if (percent > arg ->cpu_warn) color = "%{F#FFFC00}";
+    else                               color = "%{F#FFFFFF}";
+
+    snprintf(out.data, 64, "CPU %s%.1lf%% %%{F-}%%{B-}", color, percent);
+    write_data(&out);
 
     old_in_use = in_use;
     old_total = total;
-    
+
     sleep(arg->dt);
   }
-  close(fifo);
 }
 
 
@@ -108,11 +109,11 @@ struct desktop_info {
   char name[16];
 };
 
-void get_desktop_info(struct desktop_info *dts, int nd) {
+static void get_desktop_info(struct desktop_info *dts, int nd) {
   int i = 0;
   FILE *fd_id, *fd_names;
 
-  fd_id    = popen("bspc query -D", "r");
+  fd_id = popen("bspc query -D", "r");
   fd_names = popen("bspc query --names -D", "r");
   while (fscanf(fd_id, "%lx", &dts[i].id)
 	 && fgets(dts[i].name, 16, fd_names)
@@ -124,33 +125,33 @@ void get_desktop_info(struct desktop_info *dts, int nd) {
   pclose(fd_names);
 }
 
-
-void get_desktop_output(const struct desktop_info * dts,
-			int nd,
-			unsigned long int focused,
-			char *out) {
+static void get_desktop_output(const struct desktop_info * dts,
+			       int nd,
+			       unsigned long int focused,
+			       char *out) {
   int i, offset = 0;
   for (i = 0; i < nd; i++) {
+    offset += sprintf(out + offset, "%%{A:desktop %lX:}", dts[i].id);
     if (dts[i].id == focused) {
-	out[offset++] = '[';
-	strncpy(out + offset, dts[i].name, 16);
-	offset += strlen(dts[i].name);
-	out[offset++] = ']';
-      }
-      else {
-	strncpy(out + offset, dts[i].name, 16);
-	offset += strlen(dts[i].name);
-      }
+      out[offset++] = '[';
+      strncpy(out + offset, dts[i].name, 16);
+      offset += strlen(dts[i].name);
+      out[offset++] = ']';
+    }
+    else {
+      strncpy(out + offset, dts[i].name, 16);
+      offset += strlen(dts[i].name);
+    }
     out[offset++] = ' ';
+    offset += sprintf(out + offset, "%%{A}");
   }
 }
 
 
 void *desktop_block (void *input) {
 
-  char buf[128], desktop[128];
-  FILE *bspc_sub, *bspc_query;
-  int fifo, len;
+  char desktop[512];
+  FILE *bspc_fd;
   unsigned long int monitor_id, desktop_id;
 
   block_input *in;
@@ -159,41 +160,35 @@ void *desktop_block (void *input) {
 
   in = (block_input *) input;
   arg = (desktop_arg *) in->arg;
-  out.id = in->id;
-  out.data = buf;
+  init_output(in, &out);
 
   struct desktop_info desktops[arg->num_desktops];
   get_desktop_info(desktops, arg->num_desktops);
 
-  fifo = open(FIFO, O_WRONLY);
-
   // Initial desktop
-  bspc_query = popen("bspc query -D -d", "r");
-  fscanf(bspc_query, "%lx", &desktop_id);
-  pclose(bspc_query);
-  get_desktop_output(desktops, arg->num_desktops, desktop_id, desktop);
-  sprintf(buf, "%%{F#FFFFFF} %s %%{F-}%%{B-}", desktop);
-  write(fifo, &out, sizeof(out));
+  bspc_fd = popen("bspc query -D -d", "r");
+  fscanf(bspc_fd, "%lx", &desktop_id);
+  pclose(bspc_fd);
 
-  bspc_sub = popen("bspc subscribe desktop_focus", "r");
+  bspc_fd = popen("bspc subscribe desktop_focus", "r");
   while (1) {
-    fgets(desktop, 128, bspc_sub);
-    sscanf(desktop, "desktop_focus %lx %lx", &monitor_id, &desktop_id);
     get_desktop_output(desktops, arg->num_desktops, desktop_id, desktop);
-    sprintf(buf, "%%{F#FFFFFF} %s %%{F-}%%{B-}", desktop);
-    write(fifo, &out, sizeof(out));
+    snprintf(out.data, 400, "%%{F#FFFFFF} %s %%{F-}%%{B-}", desktop);
+    write_data(&out);
+
+    // Wait for desktop focus change
+    fgets(desktop, 128, bspc_fd);
+    sscanf(desktop, "desktop_focus %lx %lx", &monitor_id, &desktop_id);
   }
 
-  pclose(bspc_sub);
-  close(fifo);
+  pclose(bspc_fd);
 }
 
 
 void *mem_block (void *input) {
 
-  char buf[128];
-  FILE *meminfo;
-  int fifo, mem_free, mem_tot;
+  FILE *meminfo_fd;
+  int mem_free, mem_tot;
 
   block_input *in;
   mem_arg *arg;
@@ -201,59 +196,49 @@ void *mem_block (void *input) {
 
   in = (block_input *) input;
   arg = (mem_arg *) in->arg;
-
-  out.id = in->id;
-  out.data = buf;
-  
-  fifo = open(FIFO, O_WRONLY);
+  init_output(in, &out);
 
   while (1) {
 
-    meminfo = fopen("/proc/meminfo", "r");
-    fscanf(meminfo, "MemTotal: %d kB\n", &mem_tot);
-    fscanf(meminfo, "MemFree: %d kB", &mem_free);
-    fclose(meminfo);
-    
-    sprintf(buf, "%%{F#FFFFFF} MEM %.1f G %%{F-}%%{B-}",
+    meminfo_fd = fopen("/proc/meminfo", "r");
+    fscanf(meminfo_fd, "MemTotal: %d kB\nMemFree: %d kB", &mem_tot, &mem_free);
+    fclose(meminfo_fd);
+
+    snprintf(out.data, 64, "%%{F#FFFFFF} MEM %.1f G %%{F-}%%{B-}",
 	    ((float) mem_free) / ((float) (1<<20)));
-    write(fifo, &out, sizeof(out));
+    write_data(&out);
     sleep(arg->dt);
   }
-  close(fifo);
 }
 
 
 /* Temperature */
 void *temp_block (void *input) {
 
-  char buf[128], *color;
+  char *color;
   char command[64] = "sensors -u ";
-  FILE *sensors;
-  int fifo;
+  FILE *sensors_fd;
   float temp;
 
-  temp_arg* arg;
   block_input* in;
+  temp_arg* arg;
   block_output out;
 
   in = (block_input *) input;
   arg = (struct temp_arg *) in->arg;
-  out.id = in->id;
-  out.data = buf;
+  init_output(in, &out);
 
   strncat(command, arg->chip, 48);
-  
-  fifo = open(FIFO, O_WRONLY);
 
   while (1) {
 
-    sensors = popen(command, "r");
+    sensors_fd = popen(command, "r");
 
-    while (fgets(buf, 128, sensors)) {
-      if (sscanf(buf, "  temp1_input: %f", &temp))
+    while (fgets(out.data, 64, sensors_fd)) {
+      if (sscanf(out.data, "  temp1_input: %f", &temp))
 	break;
     }
-    pclose(sensors);
+    pclose(sensors_fd);
 
     if (temp > arg->T_crit)
       color = "%{F#FF0000}";
@@ -262,46 +247,35 @@ void *temp_block (void *input) {
     else
       color = "%{F#FFFFFF}";
 
-    sprintf(buf, "%s %.1f°C %%{F-}%%{B-}", color, temp);
-    write(fifo, &out, sizeof(out));
+    snprintf(out.data, 64, "%s %.1f°C %%{F-}%%{B-}", color, temp);
+    write_data(&out);
     sleep(arg->dt);
   }
-  close(fifo);
 }
 
 void *vol_block(void *input) {
 
-  
-  char buf[128];
-  FILE *pulse;
-  int fifo, pipe;
-  int vol1, vol2;
+  FILE *pulse_fd;
+  int vol[2];
 
-  vol_arg* arg;
   block_input* in;
+  vol_arg* arg;
   block_output out;
 
   in = (block_input *) input;
   arg = (vol_arg *) in->arg;
-  pipe = in->sig_pipe;
-  out.id = in->id;
-  out.data = buf;
-
-  fifo = open(FIFO, O_WRONLY);
-  
+  init_output(in, &out);
 
   while (1) {
-    pulse = popen("pulsemixer --get-volume", "r");
-    fscanf(pulse, "%d %d\n", &vol1, &vol2);
-    pclose(pulse);
-    
-    sprintf(buf, " VOL %d ", vol1);
-    write(fifo, &out, sizeof(out));
-    usleep(2000);
-    read(pipe, buf, 1);
-  }
+    pulse_fd = popen("pulsemixer --get-volume", "r");
+    fscanf(pulse_fd, "%d %d\n", vol, vol+1);
+    pclose(pulse_fd);
 
-  
+    sprintf(out.data, " VOL %d ", vol[0]);
+    write_data(&out);
+    usleep(2000);
+    read(in->sig_pipe, out.data, 1);
+  }
 }
 
 
@@ -327,14 +301,14 @@ void *vol_block(void *input) {
 /*            --grow-direction W --log-level info \ */
 /*            --kludges fix_window_pos,force_icons_size,use_icons_hints", */
 /* 	   arg->x_pos, arg->y_pos, arg->icon_size); */
-  
+
 /*   systray = popen(buf, "r"); */
 
 /*   // Get id */
 /*   xdo = popen("xdo id -a cobar", "r"); */
 /*   fscanf(xdo, "%lx", &systray_wid); */
 /*   pclose(xdo); */
-  
+
 /*   while (1) { */
 
 /*     // read input from tray */
@@ -348,4 +322,3 @@ void *vol_block(void *input) {
 /*     } */
 /*   } */
 /* } */
-

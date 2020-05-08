@@ -9,7 +9,7 @@
 
 
 /* Bar Options */
-#define BACKGROUND_COLOR "'#000000'"
+#define BACKGROUND_COLOR "#000000"
 #define RESOLUTION "1920x28"
 #define HEIGHT 28
 #define WIDTH 1920
@@ -21,9 +21,11 @@ clock_arg clock_args = {
     .dt = 60,
     .time_format="%%{F#FFFFFF} %b %d %R %%{F-}%%{B-}"
 };
-  
+
 cpu_arg cpu_args = {
   .dt = 2,
+  .cpu_crit = 90,
+  .cpu_warn = 80,
 };
 
 mem_arg mem_args = {
@@ -53,17 +55,15 @@ desktop_arg desktop_args = {
 /*     .icon_size = HEIGHT */
 /* }; */
 
-
-
-bar_module lblocks[] = {
-  {desktop_block, (void *)&desktop_args, -1, NULL},
+block_def lblocks[] = {
+  {desktop_block, (void *)&desktop_args, -1},
 };
 
-bar_module rblocks[] = {
-  {vol_block, (void *)&vol_args, 2, NULL},
-  {temp_block, (void *)&temp_args, -1, NULL},
-  {cpu_block, (void *)&cpu_args, -1, NULL},
-  { clock_block,  (void *) &clock_args,  -1, NULL },
+block_def rblocks[] = {
+  {vol_block,   (void *) &vol_args,      2},
+  {temp_block,  (void *) &temp_args,    -1},
+  {cpu_block,   (void *) &cpu_args,     -1},
+  {clock_block, (void *) &clock_args,   -1},
   // { mem_block,    (void *) &mem_args,    NULL },
   // { tray_block,   (void *) &tray_args,   NULL },
 };

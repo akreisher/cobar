@@ -4,6 +4,8 @@
 #include "modules.h"
 
 /* SETTINGS */
+#define NUM_MONITORS 1
+#define NUM_DESKTOPS 10
 
 /* Bar Options */
 #define BACKGROUND_COLOR "#000000"
@@ -41,7 +43,7 @@ vol_arg vol_args = {
 };
 
 desktop_arg desktop_args = {
-  .num_desktops = 20,
+  .num_desktops = 10,
 };
 
 

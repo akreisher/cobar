@@ -8,7 +8,7 @@ all: cobar
 cobar: cobar.c modules.o bspwm.o config.h
 	$(CC) $(CFLAGS) -pthread -o $@ $^
 
-debug: cobar.c modules.o config.h
+debug: cobar.c modules.o bspwm.o config.h
 	$(CC) $(CFLAGS) -g -DDEBUG -pthread -o cobar $^
 
 test: test.c modules.o config.h

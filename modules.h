@@ -22,7 +22,10 @@ typedef struct block_output {
 } block_output;
 
 void init_output(const block_input *input, block_output *output);
-void write_data(const block_output *output) ;
+void write_data(const block_output *output);
+
+extern int num_monitors;
+
 
 /***********BLOCKS************/
 

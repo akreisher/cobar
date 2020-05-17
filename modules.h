@@ -5,7 +5,7 @@
 // Config definition of a module
 typedef struct block_def {
   void *(*func) (void *);  // Function
-  void *arg;  // Function arguments
+  void *arg;
   int sigrt_num;  // Signal to handle
 } block_def;
 
@@ -40,55 +40,56 @@ typedef struct block_output {
 /***********BLOCKS************/
 
 /*           CLOCK           */
+void *clock_block(void *input);
 typedef struct clock_arg {
   int dt;
   const char *time_format;
 } clock_arg;
-void *clock_block(void *input);
-
-
+extern clock_arg clock_args;
 
 /*             CPU           */
+void *cpu_block(void *input);
 typedef struct cpu_arg {
   int dt;
   float cpu_crit, cpu_warn;
 } cpu_arg;
-void *cpu_block(void *input);
+extern cpu_arg cpu_args;
 
 
 /*           DESKTOP         */
+void *desktop_block(void *input);
 typedef struct desktop_arg {
   int num_desktops;
 } desktop_arg;
-void *desktop_block(void *input);
-
+extern desktop_arg desktop_args;
 
 
 /*           MEMORY          */
+void *mem_block(void *input);
 typedef struct mem_arg {
   int dt;
 } mem_arg;
-void *mem_block(void *input);
-
+extern mem_arg mem_args;
 
 
 /*        TEMPERATURE        */
+void *temp_block(void *input);
 typedef struct temp_arg {
   int dt;
   float T_crit, T_warn;
   const char *chip;
 } temp_arg;
-void *temp_block(void *input);
-
+extern temp_arg temp_args;
 
 
 /*          VOLUME          */
+void *vol_block(void *input);
 typedef struct vol_arg {
   int dt;
 } vol_arg;
-void *vol_block(void *input);
+extern vol_arg vol_args;
 
-
+/*
 typedef struct tray_arg {
   int dt;
   int x_pos;
@@ -96,5 +97,5 @@ typedef struct tray_arg {
   int icon_size;
 } tray_arg;
 void *tray_block(void *input);
-
+*/
 #endif

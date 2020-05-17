@@ -7,7 +7,6 @@
 
 /* SETTINGS */
 
-
 /* Bar Options */
 #define BACKGROUND_COLOR "#000000"
 #define RESOLUTION "1920x28"
@@ -39,7 +38,7 @@ temp_arg temp_args = {
     .chip = "k10temp-pci-00c3",
 };
 
-temp_arg vol_args = {
+vol_arg vol_args = {
     .dt = 5,
 };
 

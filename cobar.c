@@ -40,6 +40,9 @@ void process_command(const char *buf) {
 
   if ((sscanf(buf, "desktop %lX\n", &desktop_id) == 1)) {
     snprintf(cmd, 64, "bspc desktop --focus 0x%lX", desktop_id);
+#ifdef DEBUG
+    printf("%s\n", cmd);
+#endif
     bspc_fd = popen(cmd, "r");
     pclose(bspc_fd);
   }

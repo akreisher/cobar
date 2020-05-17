@@ -12,12 +12,12 @@
 
 #include "modules.h"
 
-static void init_output(const block_input *input, block_output *output) {
+void init_output(const block_input *input, block_output *output) {
   output->id = input->id;
-  output->fd = input->out_pipe[1];
+  output->fd = input->outfd;
 }
 
-static void write_data(const block_output *output) {
+void write_data(const block_output *output) {
   write(output->fd, output, sizeof(block_output));
 }
 
@@ -98,85 +98,6 @@ void *cpu_block (void *input) {
 
     sleep(cpu_args.dt);
   }
-}
-
-
-struct desktop_info {
-  unsigned long int id;
-  char name[16];
-};
-
-static void get_desktop_info(struct desktop_info *dts, int nd) {
-  int i = 0;
-  FILE *fd_id, *fd_names;
-
-  fd_id = popen("bspc query -D", "r");
-  fd_names = popen("bspc query --names -D", "r");
-  while (fscanf(fd_id, "%lx", &dts[i].id)
-	 && fgets(dts[i].name, 16, fd_names)
-	 && i < nd) {
-    dts[i].name[strcspn(dts[i].name, "\r\n")] = '\0';
-    i++;
-  }
-  pclose(fd_id);
-  pclose(fd_names);
-}
-
-static void get_desktop_output(const struct desktop_info * dts,
-			       int nd,
-			       unsigned long int focused,
-			       char *out) {
-  int i, offset = 0;
-  for (i = 0; i < nd; i++) {
-    offset += sprintf(out + offset, "%%{A:desktop %lX:}", dts[i].id);
-    if (dts[i].id == focused) {
-      offset += sprintf(out + offset, "%%{F#FFFFFF}");
-      out[offset++] ='[';
-      offset += sprintf(out + offset, "%s", dts[i].name);
-      out[offset++] =']';
-      offset += sprintf(out + offset, "%%{F#808080}");
-    }
-    else {
-      offset += sprintf(out + offset, "%s", dts[i].name);
-    }
-    out[offset++] = ' ';
-    offset += sprintf(out + offset, "%%{A}");
-  }
-}
-
-
-void *desktop_block (void *input) {
-
-  char desktop[512];
-  FILE *bspc_fd;
-  unsigned long int monitor_id, desktop_id;
-
-  block_input *in;
-  block_output out;
-
-  in = (block_input *) input;
-  init_output(in, &out);
-
-  struct desktop_info desktops[desktop_args.num_desktops];
-  get_desktop_info(desktops, desktop_args.num_desktops);
-
-  // Initial desktop
-  bspc_fd = popen("bspc query -D -d", "r");
-  fscanf(bspc_fd, "%lx", &desktop_id);
-  pclose(bspc_fd);
-
-  bspc_fd = popen("bspc subscribe desktop_focus", "r");
-  while (1) {
-    get_desktop_output(desktops, desktop_args.num_desktops, desktop_id, desktop);
-    snprintf(out.data, 400, "%%{F#808080} %s %%{F-}%%{B-}", desktop);
-    write_data(&out);
-
-    // Wait for desktop focus change
-    fgets(desktop, 128, bspc_fd);
-    sscanf(desktop, "desktop_focus %lx %lx", &monitor_id, &desktop_id);
-  }
-
-  pclose(bspc_fd);
 }
 
 
@@ -263,7 +184,7 @@ void *vol_block(void *input) {
     sprintf(out.data, " VOL %d ", vol[0]);
     write_data(&out);
     usleep(2000);
-    read(in->sig_pipe, out.data, 1);
+    read(in->infd, out.data, 1);
   }
 }
 

@@ -33,6 +33,25 @@ char *bar_command[] = {
 static int sig_pipes[N_SIGRT];
 static sigset_t sig_mask;
 
+
+
+// A module object
+typedef struct block_module {
+  const block_def *def;
+  block_input input;
+  pthread_t thread;
+  int pipes[4];
+  char data[512];
+} block_module;
+
+enum block_pipe {
+  BLOCK_READ,
+  BAR_WRITE,
+  BAR_READ,
+  BLOCK_WRITE
+};
+
+
 void process_command(const char *buf) {
   FILE *bspc_fd;
   char cmd[64];
@@ -50,27 +69,25 @@ void process_command(const char *buf) {
 
 void sigrt_handler (int signum) {
 #ifdef DEBUG
-  printf("Received signal: %d\n", signum);
+  printf("Received SIGRTMIN+%d\n", signum-SIGRTMIN);
 #endif
-  write(sig_pipes[(signum - SIGRTMIN)*2 + 1], "", 1);
+  write(sig_pipes[signum-SIGRTMIN], "", 1);
 }
 
 
-int setup_signal(int num) {
+int setup_signal(int num, int pipe) {
   // Setup RT signals
   struct sigaction act = {
     .sa_handler = sigrt_handler,
     .sa_flags = SA_RESTART
   };
 
-  pipe(sig_pipes + 2*num);
-  fcntl(sig_pipes[2*num+1], F_SETFL, O_NONBLOCK); // Don't block write pipes.
-
   if (sigaction(SIGRTMIN+num, &act, NULL) < 0) {
     perror("sigaction");
     return 1;
   }
   sigaddset(&sig_mask, SIGRTMIN+num);
+  sig_pipes[num] = pipe;
   return 0;
 }
 
@@ -80,22 +97,26 @@ void init_block(const block_def *def, block_module *block, int id, int epfd) {
 
   block->def = def;
   block->input.id = id;
-  block->input.arg = def->arg;
 
   // Set up pipes
+  pipe(block->pipes);
+  pipe(block->pipes + 2);
+  block->input.infd = block->pipes[BLOCK_READ];
+  block->input.outfd = block->pipes[BLOCK_WRITE];
+
   if (def->sigrt_num > 0 && def->sigrt_num < N_SIGRT) {
-    setup_signal(def->sigrt_num);
-    block->input.sig_pipe = sig_pipes[2 * def->sigrt_num];
+    setup_signal(def->sigrt_num, block->pipes[BAR_WRITE]);
   }
-  pipe(block->in_pipe);
-  pipe(block->out_pipe);
-  block->input.in_pipe = block->in_pipe;
-  block->input.out_pipe = block->out_pipe;
 
+  
   // Add out pipe read fd to epoll
-  ev.data.fd = *block->out_pipe;
+  ev.data.fd = block->pipes[BAR_READ];
 
-  if (epoll_ctl(epfd, EPOLL_CTL_ADD, *block->out_pipe, &ev) == -1) {
+  // Don't block write pipes.
+  fcntl(block->pipes[BAR_WRITE], F_SETFL, O_NONBLOCK);
+  fcntl(block->pipes[BLOCK_WRITE], F_SETFL, O_NONBLOCK);
+  
+  if (epoll_ctl(epfd, EPOLL_CTL_ADD, block->pipes[BAR_READ], &ev) == -1) {
     perror("epoll_ctl: add block out pipe");
     exit(EXIT_FAILURE);
   }

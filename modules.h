@@ -1,32 +1,18 @@
 #ifndef MODULE_H_
 #define MODULE_H_
-#include <pthread.h>
 
 // Config definition of a module
 typedef struct block_def {
   void *(*func) (void *);  // Function
-  void *arg;
   int sigrt_num;  // Signal to handle
 } block_def;
 
 // Input to a block module
 typedef struct block_input {
   int id;
-  int *in_pipe;
-  int *out_pipe;
-  int sig_pipe;
-  void *arg;  // Block-specific
+  int infd;
+  int outfd;
 } block_input;
-
-// A module object
-typedef struct block_module {
-  const block_def *def;
-  block_input input;
-  pthread_t thread;
-  int in_pipe[2];  // 0: read; 1: write
-  int out_pipe[2];  // 0: read; 1: write
-  char data[512];
-} block_module;
 
 // Output of a block module
 typedef struct block_output {
@@ -35,7 +21,8 @@ typedef struct block_output {
   char data[512];
 } block_output;
 
-
+void init_output(const block_input *input, block_output *output);
+void write_data(const block_output *output) ;
 
 /***********BLOCKS************/
 

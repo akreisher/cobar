@@ -63,6 +63,12 @@ typedef struct desktop_arg {
 void *desktop_block(void *input);
 
 
+/*            MAIL           */
+typedef struct mail_arg {
+  const char *command;
+} mail_arg;
+void *mail_block(void *input);
+
 
 /*           MEMORY          */
 typedef struct mem_arg {

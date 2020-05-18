@@ -3,18 +3,17 @@
 #include <stddef.h>
 #include "modules.h"
 
-// #define DEBUG
+#define DEBUG
 
 /* SETTINGS */
 
-
 /* Bar Options */
 #define BACKGROUND_COLOR "#000000"
-#define RESOLUTION "1920x28"
+#define RESOLUTION "3840x28"
 #define HEIGHT 28
 #define WIDTH 1920
 #define SCREEN_HEIGHT 1080
-#define FONT "SourceCodePro"
+#define FONT "SourceCodePro:size=8"
 
 /* ARGS */
 clock_arg clock_args = {
@@ -28,15 +27,19 @@ cpu_arg cpu_args = {
   .cpu_warn = 80,
 };
 
+mail_arg mail_args = {
+  .command = "mu find date:1w..now maildir:/INBOX flag:unread 2>/dev/null | wc -l"
+};
+
 mem_arg mem_args = {
-    .dt = 5,
+  .dt = 5,
 };
 
 temp_arg temp_args = {
     .dt = 2,
     .T_crit = 90,
     .T_warn = 70,
-    .chip = "k10temp-pci-00c3",
+    .chip = "thinkpad-isa-0000",
 };
 
 temp_arg vol_args = {
@@ -60,10 +63,11 @@ block_def lblocks[] = {
 };
 
 block_def rblocks[] = {
-  {vol_block,   (void *) &vol_args,      2},
-  {temp_block,  (void *) &temp_args,    -1},
-  {cpu_block,   (void *) &cpu_args,     -1},
-  {clock_block, (void *) &clock_args,   -1},
+  {mail_block,   (void *) &mail_args,     9},
+  {vol_block,    (void *) &vol_args,      2},
+  {temp_block,   (void *) &temp_args,    -1},
+  {cpu_block,    (void *) &cpu_args,     -1},
+  {clock_block,  (void *) &clock_args,   -1},
   // { mem_block,    (void *) &mem_args,    NULL },
   // { tray_block,   (void *) &tray_args,   NULL },
 };

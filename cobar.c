@@ -22,12 +22,15 @@ char *bar_command[] = {
   "-B", BACKGROUND_COLOR,
   "-g", RESOLUTION,
   "-f", FONT,
+  "-a", "30",
   NULL};
 
 // Number of signals.
 #define N_SIGRT 10
 
 #define MAX_EVENTS 10
+
+#define NUM_MONITORS 2
 
 // Pipes for signal handling.
 static int sig_pipes[N_SIGRT];
@@ -40,6 +43,7 @@ void process_command(const char *buf) {
 
   if ((sscanf(buf, "desktop %lX\n", &desktop_id) == 1)) {
     snprintf(cmd, 64, "bspc desktop --focus 0x%lX", desktop_id);
+    printf("%s\n", cmd);
     bspc_fd = popen(cmd, "r");
     pclose(bspc_fd);
   }
@@ -111,7 +115,7 @@ int main () {
   char BUF[512];
   struct epoll_event ev, events[MAX_EVENTS];
 
-  block_module lblock_mods[num_lblocks];
+    block_module lblock_mods[num_lblocks];
   block_module rblock_mods[num_rblocks];
   block_output output;
 
@@ -201,20 +205,23 @@ int main () {
 	      : rblock_mods[output.id-num_lblocks].data,
 	      output.data, 512);
     }
-    /* Left Blocks */
-    write(bar_pipes[3], "%{l}", 4);
-    for (int i = 0; i < num_lblocks; i++) {
-      if (i) write(bar_pipes[3], "|", 1);
-      write(bar_pipes[3], lblock_mods[i].data, strlen(lblock_mods[i].data));
-    }
+    for (int m = 0; m < NUM_MONITORS; m++) {
+      /* Left Blocks */
+      write(bar_pipes[3], "%{l}", 4);
+      for (int i = 0; i < num_lblocks; i++) {
+	write(bar_pipes[3], lblock_mods[i].data,
+	      strlen(lblock_mods[i].data));
+      }
 
-    /* Right Blocks */
-    write(bar_pipes[3], "%{r}", 4);
-    for (int i = 0; i < num_rblocks; i++) {
-      if (i) write(bar_pipes[3], "|", 1);
-      write(bar_pipes[3], rblock_mods[i].data, strlen(rblock_mods[i].data));
+      write(bar_pipes[3], "%{r}", 4);
+      for (int i = 0; i < num_rblocks; i++) {
+	if (i) write(bar_pipes[3], "|", 1);
+	write(bar_pipes[3], rblock_mods[i].data,
+	      strlen(rblock_mods[i].data));
+      }
+      write(bar_pipes[3], "%{S+} ", 5);
     }
-
+    
     /* Write to bar_pipes[3] */
     write(bar_pipes[3], "\n", 1);
   }

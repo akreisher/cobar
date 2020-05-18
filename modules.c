@@ -93,7 +93,7 @@ void *cpu_block (void *input) {
     else if (percent > arg ->cpu_warn) color = "%{F#FFFC00}";
     else                               color = "%{F#FFFFFF}";
 
-    snprintf(out.data, 64, "CPU %s%.1lf%% %%{F-}%%{B-}", color, percent);
+    snprintf(out.data, 64, " CPU %s%.1lf%% %%{F-}%%{B-}", color, percent);
     write_data(&out);
 
     old_in_use = in_use;
@@ -133,14 +133,14 @@ static void get_desktop_output(const struct desktop_info * dts,
   for (i = 0; i < nd; i++) {
     offset += sprintf(out + offset, "%%{A:desktop %lX:}", dts[i].id);
     if (dts[i].id == focused) {
-      out[offset++] = '[';
-      strncpy(out + offset, dts[i].name, 16);
-      offset += strlen(dts[i].name);
-      out[offset++] = ']';
+      offset += sprintf(out + offset, "%%{F#FFFFFF}");
+      out[offset++] ='[';
+      offset += sprintf(out + offset, "%s", dts[i].name);
+      out[offset++] =']';
+      offset += sprintf(out + offset, "%%{F#808080}");
     }
     else {
-      strncpy(out + offset, dts[i].name, 16);
-      offset += strlen(dts[i].name);
+      offset += sprintf(out + offset, "%s", dts[i].name);
     }
     out[offset++] = ' ';
     offset += sprintf(out + offset, "%%{A}");
@@ -173,7 +173,7 @@ void *desktop_block (void *input) {
   bspc_fd = popen("bspc subscribe desktop_focus", "r");
   while (1) {
     get_desktop_output(desktops, arg->num_desktops, desktop_id, desktop);
-    snprintf(out.data, 400, "%%{F#FFFFFF} %s %%{F-}%%{B-}", desktop);
+    snprintf(out.data, 400, "%%{F#808080} %s %%{F-}%%{B-}", desktop);
     write_data(&out);
 
     // Wait for desktop focus change
@@ -182,6 +182,33 @@ void *desktop_block (void *input) {
   }
 
   pclose(bspc_fd);
+}
+
+void *mail_block (void *input) {
+
+  FILE *mail_fd;
+  int unread;
+
+  block_input *in;
+  mail_arg *arg;
+  block_output out;
+
+  in = (block_input *) input;
+  arg = (mail_arg *) in->arg;
+  init_output(in, &out);
+
+  while (1) {
+    mail_fd = popen(arg->command, "r");
+    fscanf(mail_fd, "%d\n", &unread);
+    pclose(mail_fd);
+
+    sprintf(out.data, " MAIL %d ", unread);
+    write_data(&out);
+    usleep(2000);
+    read(in->sig_pipe, out.data, 1);
+  }
+
+  
 }
 
 

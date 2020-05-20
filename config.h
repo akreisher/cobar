@@ -7,6 +7,10 @@
 #define NUM_MONITORS 1
 #define NUM_DESKTOPS 10
 
+#ifndef LOG_LEVEL
+#define LOG_LEVEL LOG_WARN
+#endif
+
 /* Bar Options */
 #define BACKGROUND_COLOR "#000000"
 #define RESOLUTION "1920x28"

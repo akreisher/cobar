@@ -14,6 +14,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "log/log.h"
 #include "modules.h"
 #include "config.h"
 
@@ -33,6 +34,7 @@ char *bar_command[] = {
 static int sig_pipes[N_SIGRT];
 static sigset_t sig_mask;
 
+pthread_mutex_t log_lock;
 
 
 // A module object
@@ -51,6 +53,12 @@ enum block_pipe {
   BLOCK_WRITE
 };
 
+void log_lock_fn(void *udata, int lock) {
+  if (lock)
+    pthread_mutex_lock((pthread_mutex_t *) udata);
+  else
+    pthread_mutex_unlock((pthread_mutex_t *) udata);
+}
 
 void process_command(const char *buf) {
   FILE *bspc_fd;
@@ -59,18 +67,14 @@ void process_command(const char *buf) {
 
   if ((sscanf(buf, "desktop %lX\n", &desktop_id) == 1)) {
     snprintf(cmd, 64, "bspc desktop --focus 0x%lX", desktop_id);
-#ifdef DEBUG
-    printf("%s\n", cmd);
-#endif
+    log_info("%s", cmd);
     bspc_fd = popen(cmd, "r");
     pclose(bspc_fd);
   }
 }
 
 void sigrt_handler (int signum) {
-#ifdef DEBUG
-  printf("Received SIGRTMIN+%d\n", signum-SIGRTMIN);
-#endif
+  log_info("Received SIGRTMIN+%d", signum-SIGRTMIN);
   write(sig_pipes[signum-SIGRTMIN], "", 1);
 }
 
@@ -83,10 +87,13 @@ int setup_signal(int num, int pipe) {
   };
 
   if (sigaction(SIGRTMIN+num, &act, NULL) < 0) {
-    perror("sigaction");
-    return 1;
+    perror("Setting rt signal");
+    exit(EXIT_FAILURE);
   }
-  sigaddset(&sig_mask, SIGRTMIN+num);
+  if (sigaddset(&sig_mask, SIGRTMIN + num) == -1) {
+    perror("sigaddset");
+    exit(EXIT_FAILURE);
+  }
   sig_pipes[num] = pipe;
   return 0;
 }
@@ -113,21 +120,28 @@ void init_block(const block_def *def, block_module *block, int id, int epfd) {
   ev.data.fd = block->pipes[BAR_READ];
 
   // Don't block write pipes.
-  fcntl(block->pipes[BAR_WRITE], F_SETFL, O_NONBLOCK);
-  fcntl(block->pipes[BLOCK_WRITE], F_SETFL, O_NONBLOCK);
-  
+  if (fcntl(block->pipes[BAR_WRITE], F_SETFL, O_NONBLOCK) == -1) {
+    perror("Set bar_write non blocking.");
+    exit(EXIT_FAILURE);
+  }
+  if (fcntl(block->pipes[BLOCK_WRITE], F_SETFL, O_NONBLOCK) == -1) {
+    perror("Set block_write non blocking.");
+    exit(EXIT_FAILURE);
+  }
+
   if (epoll_ctl(epfd, EPOLL_CTL_ADD, block->pipes[BAR_READ], &ev) == -1) {
     perror("epoll_ctl: add block out pipe");
     exit(EXIT_FAILURE);
   }
 
   // Start threads
+  log_info("Starting thread %d", id);
   pthread_create(&block->thread, NULL, def->func, (void *) &block->input);
 }
 
 
 int main () {
-  int i, nfds, epoll_fd;
+  int i, nfds, epoll_fd, bar_pid, bar_pipes[4];
   int num_lblocks = sizeof(lblocks)/sizeof(block_def);
   int num_rblocks = sizeof(rblocks)/sizeof(block_def);
   FILE *bar_fd;
@@ -139,8 +153,40 @@ int main () {
   block_module rblock_mods[num_rblocks];
   block_output output;
 
-  // Setup epoll
 
+  // Logging setup
+  pthread_mutex_init(&log_lock, NULL);
+  log_set_lock(log_lock_fn);
+  log_set_udata(&log_lock);
+  log_set_level(LOG_LEVEL);
+
+  // Start lemonbar
+  log_info("Starting lemonbar");
+  pipe(bar_pipes);
+  pipe(bar_pipes+2);
+  bar_pid = fork();
+
+  if (bar_pid == 0) {
+    // Bar process
+    close(bar_pipes[0]); // read end of read-pipe
+    close(bar_pipes[3]); // write end of write-pipe
+
+    dup2(bar_pipes[1], STDOUT_FILENO);
+    dup2(bar_pipes[1], STDERR_FILENO);
+    dup2(bar_pipes[2], STDIN_FILENO);
+
+    close(bar_pipes[1]);
+    close(bar_pipes[2]);
+
+    // ask kernel to deliver SIGTERM in case the parent dies
+    prctl(PR_SET_PDEATHSIG, SIGTERM);
+    
+    execvp("lemonbar", bar_command);
+    perror("Exec lemonbar");
+    exit(EXIT_FAILURE);
+  }
+  
+  // Setup epoll
   epoll_fd = epoll_create1(0);
 
   if (epoll_fd == -1) {
@@ -156,10 +202,6 @@ int main () {
     init_block(&rblocks[i], &rblock_mods[i], i+num_lblocks, epoll_fd);
   }
 
-  int bar_pipes[4];
-  pipe(bar_pipes);
-  pipe(bar_pipes+2);
-
   ev.events = EPOLLIN;
   ev.data.fd = bar_pipes[0];
 
@@ -169,27 +211,7 @@ int main () {
   }
 
   int pid;
-  pid = fork();
 
-  if (pid == 0) {
-    // Bar process
-    close(bar_pipes[0]); // read end of read-pipe
-    close(bar_pipes[3]); // write end of write-pipe
-
-    dup2(bar_pipes[1], STDOUT_FILENO);
-    dup2(bar_pipes[1], STDERR_FILENO);
-    dup2(bar_pipes[2], STDIN_FILENO);
-
-    close(bar_pipes[1]);
-    close(bar_pipes[2]);
-
-    // ask kernel to deliver SIGTERM in case the parent dies
-    prctl(PR_SET_PDEATHSIG, SIGTERM);
-
-    execvp("lemonbar", bar_command);
-    perror("Exec lemonbar");
-    exit(EXIT_FAILURE);
-  }
 
   while (1) {
     /* Wait for update */
@@ -217,9 +239,7 @@ int main () {
 	exit(EXIT_FAILURE);
       }
 
-#ifdef DEBUG
-      printf("Got %s from %d\n", output.data, output.id);
-#endif
+      log_debug("Got %s from %d", output.data, output.id);
 
       strncpy(output.id < num_lblocks ? lblock_mods[output.id].data
 	      : rblock_mods[output.id-num_lblocks].data,
@@ -242,7 +262,8 @@ int main () {
     /* Write to bar_pipes[3] */
     write(bar_pipes[3], "\n", 1);
   }
-
+  
   pclose(bar_fd);
+  pthread_mutex_destroy(&log_lock);
   return 0;
 }

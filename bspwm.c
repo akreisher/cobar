@@ -10,6 +10,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "log/log.h"
 #include "modules.h"
 
 typedef unsigned long int uli;
@@ -26,19 +27,26 @@ struct desktop_info {
 };
 
 static void get_desktop_info(struct desktop_info *dts, int nd) {
+
   int i = 0;
   FILE *fd_id, *fd_names;
 
   fd_id = popen("bspc query -D", "r");
   fd_names = popen("bspc query --names -D", "r");
-  while (fscanf(fd_id, "%lx", &dts[i].id)
-	 && fgets(dts[i].name, 16, fd_names)
-	 && i < nd) {
+
+  for (i = 0; i < nd; i++) {
+  
+    if (fscanf(fd_id, "%lx", &dts[i].id) != 1)
+      break;
+    if (!fgets(dts[i].name, 16, fd_names))
+      break;
     dts[i].name[strcspn(dts[i].name, "\r\n")] = '\0';
-    i++;
+    log_debug("%s", dts[i].name);
   }
+
   pclose(fd_id);
   pclose(fd_names);
+
 }
 
 static void get_desktop_output(const struct desktop_info * dts,
@@ -77,11 +85,11 @@ void desktop_event(FILE *bspc_fd, struct desktop_info *dts) {
 
   fgets(event, 128, bspc_fd);
   ptr = event;
-  printf("%s\n", event);
 
+  printf("Here!\n");
+  log_debug("bspc report: %s", event);
   
   while (ptr) {
-    printf("c: %c\n", ptr[1]);
     switch (ptr[1]) {
     case 'o': {
       dts[i++].flags = OCCUPIED;
@@ -111,18 +119,20 @@ void desktop_event(FILE *bspc_fd, struct desktop_info *dts) {
 }
 
 void *desktop_block (void *input) {
-
+  log_info("de");
   char buf[512];
   FILE *bspc_fd;
   unsigned long int monitor_id, desktop_id;
 
   block_input *in;
   block_output out;
-
+    
+    
   in = (block_input *) input;
   init_output(in, &out);
 
   struct desktop_info desktops[desktop_args.num_desktops];
+
   get_desktop_info(desktops, desktop_args.num_desktops);
 
   // Initial desktop
@@ -135,8 +145,6 @@ void *desktop_block (void *input) {
     get_desktop_output(desktops, desktop_args.num_desktops, buf);
     snprintf(out.data, 400, "%%{F#808080} %s %%{F-}%%{B-}", buf);
     write_data(&out);
-
-    
     // Wait for desktop focus change
     desktop_event(bspc_fd, desktops);
   }

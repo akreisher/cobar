@@ -12,12 +12,12 @@
 
 #include "modules.h"
 
-static void init_output(const block_input *input, block_output *output) {
+void init_output(const block_input *input, block_output *output) {
   output->id = input->id;
-  output->fd = input->out_pipe[1];
+  output->fd = input->outfd;
 }
 
-static void write_data(const block_output *output) {
+void write_data(const block_output *output) {
   write(output->fd, output, sizeof(block_output));
 }
 
@@ -26,14 +26,13 @@ void *clock_block (void *input) {
 
   block_output out;
   block_input *in = (block_input *) input;
-  clock_arg *arg = (clock_arg *) in->arg;
   init_output(in, &out);
 
   while (1) {
     t = time(NULL);
-    strftime(out.data, 64, arg->time_format, localtime(&t));
+    strftime(out.data, 64, clock_args.time_format, localtime(&t));
     write_data(&out);
-    sleep(arg->dt);
+    sleep(clock_args.dt);
   }
 }
 
@@ -48,10 +47,8 @@ void *cpu_block (void *input) {
 
   block_input *in;
   block_output out;
-  cpu_arg *arg;
 
   in = (block_input *) input;
-  arg = (cpu_arg *) in->arg;
   init_output(in, &out);
 
   cpuinfo = fopen("/proc/stat", "r");
@@ -89,8 +86,8 @@ void *cpu_block (void *input) {
     percent = 100.0f * (in_use - old_in_use) / (float) (total - old_total);
 
     // Get color
-    if      (percent > arg->cpu_crit)  color = "%{F#FF0000}";
-    else if (percent > arg ->cpu_warn) color = "%{F#FFFC00}";
+    if      (percent > cpu_args.cpu_crit)  color = "%{F#FF0000}";
+    else if (percent > cpu_args.cpu_warn) color = "%{F#FFFC00}";
     else                               color = "%{F#FFFFFF}";
 
     snprintf(out.data, 64, " CPU %s%.1lf%% %%{F-}%%{B-}", color, percent);
@@ -99,90 +96,10 @@ void *cpu_block (void *input) {
     old_in_use = in_use;
     old_total = total;
 
-    sleep(arg->dt);
+    sleep(cpu_args.dt);
   }
 }
 
-
-struct desktop_info {
-  unsigned long int id;
-  char name[16];
-};
-
-static void get_desktop_info(struct desktop_info *dts, int nd) {
-  int i = 0;
-  FILE *fd_id, *fd_names;
-
-  fd_id = popen("bspc query -D", "r");
-  fd_names = popen("bspc query --names -D", "r");
-  while (fscanf(fd_id, "%lx", &dts[i].id)
-	 && fgets(dts[i].name, 16, fd_names)
-	 && i < nd) {
-    dts[i].name[strcspn(dts[i].name, "\r\n")] = '\0';
-    i++;
-  }
-  pclose(fd_id);
-  pclose(fd_names);
-}
-
-static void get_desktop_output(const struct desktop_info * dts,
-			       int nd,
-			       unsigned long int focused,
-			       char *out) {
-  int i, offset = 0;
-  for (i = 0; i < nd; i++) {
-    offset += sprintf(out + offset, "%%{A:desktop %lX:}", dts[i].id);
-    if (dts[i].id == focused) {
-      offset += sprintf(out + offset, "%%{F#FFFFFF}");
-      out[offset++] ='[';
-      offset += sprintf(out + offset, "%s", dts[i].name);
-      out[offset++] =']';
-      offset += sprintf(out + offset, "%%{F#808080}");
-    }
-    else {
-      offset += sprintf(out + offset, "%s", dts[i].name);
-    }
-    out[offset++] = ' ';
-    offset += sprintf(out + offset, "%%{A}");
-  }
-}
-
-
-void *desktop_block (void *input) {
-
-  char desktop[512];
-  FILE *bspc_fd;
-  unsigned long int monitor_id, desktop_id;
-
-  block_input *in;
-  desktop_arg *arg;
-  block_output out;
-
-  in = (block_input *) input;
-  arg = (desktop_arg *) in->arg;
-  init_output(in, &out);
-
-  struct desktop_info desktops[arg->num_desktops];
-  get_desktop_info(desktops, arg->num_desktops);
-
-  // Initial desktop
-  bspc_fd = popen("bspc query -D -d", "r");
-  fscanf(bspc_fd, "%lx", &desktop_id);
-  pclose(bspc_fd);
-
-  bspc_fd = popen("bspc subscribe desktop_focus", "r");
-  while (1) {
-    get_desktop_output(desktops, arg->num_desktops, desktop_id, desktop);
-    snprintf(out.data, 400, "%%{F#808080} %s %%{F-}%%{B-}", desktop);
-    write_data(&out);
-
-    // Wait for desktop focus change
-    fgets(desktop, 128, bspc_fd);
-    sscanf(desktop, "desktop_focus %lx %lx", &monitor_id, &desktop_id);
-  }
-
-  pclose(bspc_fd);
-}
 
 void *mail_block (void *input) {
 
@@ -190,27 +107,24 @@ void *mail_block (void *input) {
   int unread;
 
   block_input *in;
-  mail_arg *arg;
   block_output out;
 
   in = (block_input *) input;
-  arg = (mail_arg *) in->arg;
   init_output(in, &out);
 
   while (1) {
-    mail_fd = popen(arg->command, "r");
+    mail_fd = popen(mail_args.command, "r");
     fscanf(mail_fd, "%d\n", &unread);
     pclose(mail_fd);
 
     sprintf(out.data, " MAIL %d ", unread);
     write_data(&out);
     usleep(2000);
-    read(in->sig_pipe, out.data, 1);
+    read(in->infd, out.data, 1);
   }
 
   
 }
-
 
 void *mem_block (void *input) {
 
@@ -218,11 +132,9 @@ void *mem_block (void *input) {
   int mem_free, mem_tot;
 
   block_input *in;
-  mem_arg *arg;
   block_output out;
 
   in = (block_input *) input;
-  arg = (mem_arg *) in->arg;
   init_output(in, &out);
 
   while (1) {
@@ -234,7 +146,7 @@ void *mem_block (void *input) {
     snprintf(out.data, 64, "%%{F#FFFFFF} MEM %.1f G %%{F-}%%{B-}",
 	    ((float) mem_free) / ((float) (1<<20)));
     write_data(&out);
-    sleep(arg->dt);
+    sleep(mem_args.dt);
   }
 }
 
@@ -248,14 +160,12 @@ void *temp_block (void *input) {
   float temp;
 
   block_input* in;
-  temp_arg* arg;
   block_output out;
 
   in = (block_input *) input;
-  arg = (struct temp_arg *) in->arg;
   init_output(in, &out);
 
-  strncat(command, arg->chip, 48);
+  strncat(command, temp_args.chip, 48);
 
   while (1) {
 
@@ -267,16 +177,16 @@ void *temp_block (void *input) {
     }
     pclose(sensors_fd);
 
-    if (temp > arg->T_crit)
+    if (temp > temp_args.T_crit)
       color = "%{F#FF0000}";
-    else if (temp > arg->T_warn)
+    else if (temp > temp_args.T_warn)
       color = "%{F#FFFC00}";
     else
       color = "%{F#FFFFFF}";
 
     snprintf(out.data, 64, "%s %.1f°C %%{F-}%%{B-}", color, temp);
     write_data(&out);
-    sleep(arg->dt);
+    sleep(temp_args.dt);
   }
 }
 
@@ -286,11 +196,9 @@ void *vol_block(void *input) {
   int vol[2];
 
   block_input* in;
-  vol_arg* arg;
   block_output out;
 
   in = (block_input *) input;
-  arg = (vol_arg *) in->arg;
   init_output(in, &out);
 
   while (1) {
@@ -301,7 +209,7 @@ void *vol_block(void *input) {
     sprintf(out.data, " VOL %d ", vol[0]);
     write_data(&out);
     usleep(2000);
-    read(in->sig_pipe, out.data, 1);
+    read(in->infd, out.data, 1);
   }
 }
 

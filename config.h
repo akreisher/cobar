@@ -3,8 +3,6 @@
 #include <stddef.h>
 #include "modules.h"
 
-#define DEBUG
-
 /* SETTINGS */
 
 /* Bar Options */
@@ -42,12 +40,12 @@ temp_arg temp_args = {
     .chip = "thinkpad-isa-0000",
 };
 
-temp_arg vol_args = {
+vol_arg vol_args = {
     .dt = 5,
 };
 
 desktop_arg desktop_args = {
-  .num_desktops = 10,
+  .nd = 10,
 };
 
 
@@ -59,15 +57,16 @@ desktop_arg desktop_args = {
 /* }; */
 
 block_def lblocks[] = {
-  {desktop_block, (void *)&desktop_args, -1},
+  {desktop_block, -1},
 };
 
 block_def rblocks[] = {
-  {mail_block,   (void *) &mail_args,     9},
-  {vol_block,    (void *) &vol_args,      2},
-  {temp_block,   (void *) &temp_args,    -1},
-  {cpu_block,    (void *) &cpu_args,     -1},
-  {clock_block,  (void *) &clock_args,   -1},
+
+  {mail_block,     9},
+  {vol_block,      2},
+  {temp_block,    -1},
+  {cpu_block,     -1},
+  {clock_block,   -1},
   // { mem_block,    (void *) &mem_args,    NULL },
   // { tray_block,   (void *) &tray_args,   NULL },
 };

@@ -86,7 +86,6 @@ void desktop_event(FILE *bspc_fd, struct desktop_info *dts) {
   fgets(event, 128, bspc_fd);
   ptr = event;
 
-  printf("Here!\n");
   log_debug("bspc report: %s", event);
   
   while (ptr) {

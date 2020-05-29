@@ -3,7 +3,7 @@ CC=gcc
 LOGDIR=log
 
 .PHONY: debug cobar
-
+.INTERMEDIATE: bspwm.o log.o modules.o
 
 all: cobar
 

@@ -20,6 +20,7 @@
  * IN THE SOFTWARE.
  */
 
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -28,6 +29,22 @@
 
 #include "log.h"
 
+/* Cobar Specific */
+static pthread_mutex_t log_lock = PTHREAD_MUTEX_INITIALIZER;
+
+static void log_lock_fn(void *udata, int lock) {
+  if (lock)
+    pthread_mutex_lock((pthread_mutex_t *) udata);
+  else
+    pthread_mutex_unlock((pthread_mutex_t *) udata);
+}
+
+void log_init() {
+  log_set_lock(log_lock_fn);
+  log_set_udata(&log_lock);
+}
+
+/* Start original log.c */
 static struct {
   void *udata;
   log_LockFn lock;

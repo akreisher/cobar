@@ -25,12 +25,11 @@ char *bar_command[] = {
   "-f", FONT,
   NULL};
 
-// Number of signals.
-#define N_SIGRT 10
-
+// Epoll Events
 #define MAX_EVENTS 10
 
 // Pipes for signal handling.
+#define N_SIGRT 10
 static int sig_pipes[N_SIGRT];
 static sigset_t sig_mask;
 
@@ -53,12 +52,6 @@ enum block_pipe {
   BLOCK_WRITE
 };
 
-void log_lock_fn(void *udata, int lock) {
-  if (lock)
-    pthread_mutex_lock((pthread_mutex_t *) udata);
-  else
-    pthread_mutex_unlock((pthread_mutex_t *) udata);
-}
 
 void process_command(const char *buf) {
   FILE *bspc_fd;
@@ -155,9 +148,7 @@ int main () {
 
 
   // Logging setup
-  pthread_mutex_init(&log_lock, NULL);
-  log_set_lock(log_lock_fn);
-  log_set_udata(&log_lock);
+  log_init();
   log_set_level(LOG_LEVEL);
 
   // Start lemonbar
@@ -187,31 +178,26 @@ int main () {
   }
   
   // Setup epoll
-  epoll_fd = epoll_create1(0);
-
-  if (epoll_fd == -1) {
+  if ((epoll_fd = epoll_create1(0)) == -1) {
     perror("epoll_create1");
     exit(EXIT_FAILURE);
   }
 
-  for (i = 0; i < num_lblocks; i++){
-    init_block(&lblocks[i], &lblock_mods[i], i, epoll_fd);
-  }
-
-  for (i = 0; i < num_rblocks; i++){
-    init_block(&rblocks[i], &rblock_mods[i], i+num_lblocks, epoll_fd);
-  }
-
+  // Bar stdout
   ev.events = EPOLLIN;
   ev.data.fd = bar_pipes[0];
-
   if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, bar_pipes[0], &ev) == -1) {
     perror("epoll_ctl: add block out pipe");
     exit(EXIT_FAILURE);
   }
 
-  int pid;
-
+  // Block inits
+  for (i = 0; i < num_lblocks; i++){
+    init_block(&lblocks[i], &lblock_mods[i], i, epoll_fd);
+  }
+  for (i = 0; i < num_rblocks; i++){
+    init_block(&rblocks[i], &rblock_mods[i], i+num_lblocks, epoll_fd);
+  }
 
   while (1) {
     /* Wait for update */
@@ -223,6 +209,7 @@ int main () {
 
     for (i = 0; i < nfds; i++) {
       if (events[i].data.fd == bar_pipes[0]) {
+	/* Mouse command from bar */
 	nb = read(events[i].data.fd, BUF, 512);
 	if (nb < 0) {
 	  perror("read bytes");
@@ -233,14 +220,12 @@ int main () {
 	continue;
       }
 
-      nb = read(events[i].data.fd, &output, sizeof(block_output));
-      if (nb < 0) {
+      /* Block input */
+      if (read(events[i].data.fd, &output, sizeof(block_output)) < 0) {
 	perror("read bytes");
 	exit(EXIT_FAILURE);
       }
-
       log_debug("Got %s from %d", output.data, output.id);
-
       strncpy(output.id < num_lblocks ? lblock_mods[output.id].data
 	      : rblock_mods[output.id-num_lblocks].data,
 	      output.data, 512);

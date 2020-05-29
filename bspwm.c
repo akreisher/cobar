@@ -10,6 +10,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "log/log.h"
 #include "modules.h"
 
 typedef unsigned long int uli;
@@ -30,8 +31,9 @@ struct desktop_info {
 
 struct monitor_info {
   uli id;
-  int flags;
   char name[16];
+  int flags;
+  int monocle;
   struct desktop_info dts[NUM_DESKTOPS];
 };
 
@@ -48,11 +50,17 @@ static void get_wm_state() {
   fd_names = popen("bspc query --names -M", "r");
   for (i = 0; i < NUM_MONITORS; i++) {
     if (fscanf(fd_id, "%lx", &monitors[i].id)
-	&& fgets(monitors[i].name, 16, fd_names))
+	&& fgets(monitors[i].name, 16, fd_names)) {
       monitors[i].name[strcspn(monitors[i].name, "\r\n")] = '\0';
-    else
+      log_debug("Monitor: %s", monitors[i].name);		
+    }
+    else {
       monitors[i].id = 0;
+      log_debug("Monitor: NULL");
+    }
+
   }
+
   pclose(fd_id);
   pclose(fd_names);
 
@@ -63,12 +71,18 @@ static void get_wm_state() {
     fd_names = popen(cmd, "r");
     for (j = 0; j < NUM_DESKTOPS; j++) {
       if (fscanf(fd_id, "%lx", &monitors[i].dts[j].id)
-	  && fgets(monitors[i].dts[j].name, 16, fd_names))
+	  && fgets(monitors[i].dts[j].name, 16, fd_names)) {
+	
 	monitors[i].dts[j].name[strcspn(monitors[i].dts[j].name, "\r\n")] = '\0';
+	log_debug("Desktop: %s", monitors[i].dts[j].name);
+      }
    
-      else
+      else {
 	monitors[i].dts[j].id = 0;
-  }
+	log_debug("Desktop: NULL");
+      }
+
+    }
     pclose(fd_id);
     pclose(fd_names);
   }
@@ -85,7 +99,10 @@ static void get_desktop_output(char *out) {
 	  offset += sprintf(out + offset, "%%{F#FF0000}");
 	}
 	else if (monitors[i].dts[j].flags & FOCUSED) {
-	  offset += sprintf(out + offset, "%%{F#FFFFFF}");
+	  if (monitors[i].monocle)
+	    offset += sprintf(out + offset, "%%{F#00FFFF}");
+	  else
+	    offset += sprintf(out + offset, "%%{F#FFFFFF}");
 	}
 	else {
 	  offset += sprintf(out + offset, "%%{F#808080}");
@@ -116,17 +133,16 @@ void desktop_event(FILE *bspc_fd) {
   int i, j;
 
   fgets(event, 256, bspc_fd);
-  ptr = event;
-#ifdef DEBUG
-  printf("%s\n", event);
-#endif
+  event[strcspn(event, "\r\n")] = '\0';
+  log_debug("bspc report: %s", event);
 
+  ptr = event;
   i = -1; // Monitor index
   j = 0; // Desktop index
   
   while (ptr) {
-    //printf("c: %c\n", ptr[1]);
     switch (ptr[1]) {
+
     // New Monitor
     case 'M': {
       monitors[i++].flags = FOCUSED;
@@ -138,54 +154,50 @@ void desktop_event(FILE *bspc_fd) {
       j = 0;
       break;
     }
+
     // New desktop
     case 'o': {
       monitors[i].dts[j++].flags = OCCUPIED;
       break;
     }
-
     case 'O': {
       monitors[i].dts[j++].flags = OCCUPIED | FOCUSED;
       break;
     }
-
     case 'F': {
       monitors[i].dts[j++].flags = FOCUSED;
       break;
     }
-
     case 'f': {
       monitors[i].dts[j++].flags = 0;
       break;
     }
-
     case 'U': {
       monitors[i].dts[j++].flags = URGENT | FOCUSED;
       break;
     }
-
     case 'u': {
       monitors[i].dts[j++].flags = URGENT;
       break;
     }
-
-
+    case 'L': {
+      monitors[i].monocle = (ptr[2] == 'M');
+    }
     default:
       break;
     }
     ptr = strpbrk(ptr+1, ":");
-    //printf("rem: %s\n", ptr);	   
   }
 }
 
 void *desktop_block (void *input) {
-
   char buf[512];
   FILE *bspc_fd;
 
   block_input *in;
   block_output out;
-
+    
+    
   in = (block_input *) input;
   init_output(in, &out);
 
@@ -196,7 +208,6 @@ void *desktop_block (void *input) {
     get_desktop_output(buf);
     snprintf(out.data, 400, "%%{F#808080} %s %%{F-}%%{B-}", buf);
     write_data(&out);
-    
     // Wait for desktop focus change
     desktop_event(bspc_fd);
   }

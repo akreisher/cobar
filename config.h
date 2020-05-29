@@ -5,6 +5,10 @@
 
 /* SETTINGS */
 
+#ifndef LOG_LEVEL
+#define LOG_LEVEL LOG_WARN
+#endif
+
 /* Bar Options */
 #define BACKGROUND_COLOR "#000000"
 #define RESOLUTION "3840x28"
@@ -14,9 +18,15 @@
 #define FONT "SourceCodePro:size=8"
 
 /* ARGS */
+battery_arg battery_args = {
+  .dt = 5,
+  .bat_crit = 10,
+  .bat_warn = 30,
+};
+
 clock_arg clock_args = {
-    .dt = 60,
-    .time_format="%%{F#FFFFFF} %b %d %R %%{F-}%%{B-}"
+  .dt = 1,
+  .time_format = "%%{F#FFFFFF} %b %d %T %%{F-}%%{B-}"
 };
 
 cpu_arg cpu_args = {
@@ -66,6 +76,7 @@ block_def rblocks[] = {
   {vol_block,      2},
   {temp_block,    -1},
   {cpu_block,     -1},
+  {battery_block, -1},
   {clock_block,   -1},
   // { mem_block,    (void *) &mem_args,    NULL },
   // { tray_block,   (void *) &tray_args,   NULL },

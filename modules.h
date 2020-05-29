@@ -31,6 +31,13 @@ extern int num_monitors;
 
 /***********BLOCKS************/
 
+void *battery_block(void *input);
+typedef struct battery_arg {
+  int dt;
+  int bat_crit, bat_warn;
+} battery_arg;
+extern battery_arg battery_args;
+
 /*           CLOCK           */
 void *clock_block(void *input);
 typedef struct clock_arg {

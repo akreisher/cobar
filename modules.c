@@ -21,6 +21,30 @@ void write_data(const block_output *output) {
   write(output->fd, output, sizeof(block_output));
 }
 
+void *battery_block(void *input) {
+  int cap;
+  char *color;
+  FILE *f;
+
+  block_output out;
+  block_input *in = (block_input *) input;
+  init_output(in, &out);
+  while (1) {
+    f = fopen("/sys/class/power_supply/BAT0/capacity" , "r");
+    fscanf(f, "%d", &cap);
+    fclose(f);
+
+    if      (cap <= battery_args.bat_crit)  color = "%{F#FF0000}";
+    else if (cap <= battery_args.bat_warn)  color = "%{F#FFFC00}";
+    else                                    color = "%{F#FFFFFF}";
+
+    snprintf(out.data, 64, " BAT %s%d%% %%{F-}%%{B-}", color, cap);
+    write_data(&out);
+
+    sleep(battery_args.dt);
+  }
+}
+
 void *clock_block (void *input) {
   time_t t;
 
@@ -87,8 +111,8 @@ void *cpu_block (void *input) {
 
     // Get color
     if      (percent > cpu_args.cpu_crit)  color = "%{F#FF0000}";
-    else if (percent > cpu_args.cpu_warn) color = "%{F#FFFC00}";
-    else                               color = "%{F#FFFFFF}";
+    else if (percent > cpu_args.cpu_warn)  color = "%{F#FFFC00}";
+    else                                   color = "%{F#FFFFFF}";
 
     snprintf(out.data, 64, " CPU %s%.1lf%% %%{F-}%%{B-}", color, percent);
     write_data(&out);
@@ -117,7 +141,7 @@ void *mail_block (void *input) {
     fscanf(mail_fd, "%d\n", &unread);
     pclose(mail_fd);
 
-    sprintf(out.data, " MAIL %d ", unread);
+    sprintf(out.data, "%%{A:mail:} MAIL %d %%{A}", unread);
     write_data(&out);
     usleep(2000);
     read(in->infd, out.data, 1);

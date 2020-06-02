@@ -1,5 +1,6 @@
 #include <fcntl.h>
 #include <errno.h>
+#include <getopt.h>
 #include <libgen.h>
 #include <time.h>
 #include <pthread.h>
@@ -23,18 +24,18 @@ char *bar_command[] = {
   "-B", BACKGROUND_COLOR,
   "-g", RESOLUTION,
   "-f", FONT,
+  "-a", "20",
   NULL};
 
 // Epoll Events
 #define MAX_EVENTS 10
 
-// Pipes for signal handling.
+// Pipes
+static int bar_pipes[4];
+
 #define N_SIGRT 10
 static int sig_pipes[N_SIGRT];
 static sigset_t sig_mask;
-
-pthread_mutex_t log_lock;
-
 
 // A module object
 typedef struct block_module {
@@ -52,28 +53,35 @@ enum block_pipe {
   BLOCK_WRITE
 };
 
-
-void process_command(const char *buf) {
+static inline void
+process_command(const char *buf) {
   FILE *bspc_fd;
   char cmd[64];
   unsigned long int desktop_id;
+  log_debug("Got command: %s", buf);
 
-  if ((sscanf(buf, "desktop %lX\n", &desktop_id) == 1)) {
+  if ((sscanf(buf, "desktop %lX", &desktop_id) == 1)) {
     snprintf(cmd, 64, "bspc desktop --focus 0x%lX", desktop_id);
-    log_info("%s", cmd);
+    log_info("Running command: \"%s\"", cmd);
     bspc_fd = popen(cmd, "r");
+    pclose(bspc_fd);
+  } else if (strcmp(buf, "mail") == 0) {
+    bspc_fd = popen("bspc desktop --focus mail", "r");
     pclose(bspc_fd);
   }
 }
 
-void sigrt_handler (int signum) {
+void
+sigrt_handler (int signum) {
   log_info("Received SIGRTMIN+%d", signum-SIGRTMIN);
   write(sig_pipes[signum-SIGRTMIN], "", 1);
 }
 
 
-int setup_signal(int num, int pipe) {
+static inline int
+setup_signal(int num, int pipe) {
   // Setup RT signals
+  log_info("Setting up signal SIGRTMIN+%d", num);
   struct sigaction act = {
     .sa_handler = sigrt_handler,
     .sa_flags = SA_RESTART
@@ -83,7 +91,7 @@ int setup_signal(int num, int pipe) {
     perror("Setting rt signal");
     exit(EXIT_FAILURE);
   }
-  if (sigaddset(&sig_mask, SIGRTMIN + num) == -1) {
+  if (sigaddset(&sig_mask, SIGRTMIN+num) == -1) {
     perror("sigaddset");
     exit(EXIT_FAILURE);
   }
@@ -91,7 +99,8 @@ int setup_signal(int num, int pipe) {
   return 0;
 }
 
-void init_block(const block_def *def, block_module *block, int id, int epfd) {
+static inline void
+init_block(const block_def *def, block_module *block, int id, int epfd) {
   struct epoll_event ev;
   ev.events = EPOLLIN;
 
@@ -132,50 +141,84 @@ void init_block(const block_def *def, block_module *block, int id, int epfd) {
   pthread_create(&block->thread, NULL, def->func, (void *) &block->input);
 }
 
+static inline void
+init_bar() {
+  log_info("Starting lemonbar");
 
-int main () {
-  int i, nfds, epoll_fd, bar_pid, bar_pipes[4];
+  // Set up pipes.
+  pipe(bar_pipes);
+  pipe(bar_pipes+2);
+  
+  if (fork() == 0) {
+    // Bar process
+
+    dup2(bar_pipes[1], STDOUT_FILENO);
+    dup2(bar_pipes[1], STDERR_FILENO);
+    dup2(bar_pipes[2], STDIN_FILENO);
+
+    // Close irrelevant fd's.
+    close(bar_pipes[0]);
+    close(bar_pipes[1]);
+    close(bar_pipes[2]);
+    close(bar_pipes[3]);
+    
+    // ask kernel to deliver SIGTERM in case the parent dies
+    prctl(PR_SET_PDEATHSIG, SIGTERM);
+    
+    execvp("lemonbar", bar_command);
+
+    // If we get here, it's a failure.
+    log_fatal("Exec lemonbar: %s", strerror(errno));
+    exit(EXIT_FAILURE);
+  }
+}
+
+
+int main (int argc, char *argv[]) {
+  int i, nfds, epoll_fd;
   int num_lblocks = sizeof(lblocks)/sizeof(block_def);
   int num_rblocks = sizeof(rblocks)/sizeof(block_def);
   FILE *bar_fd;
   ssize_t nb;
-  char BUF[512];
+  char BUF[512], opt, *log_level=NULL, *log_filename=NULL;
   struct epoll_event ev, events[MAX_EVENTS];
 
   block_module lblock_mods[num_lblocks];
   block_module rblock_mods[num_rblocks];
   block_output output;
 
+  static struct option long_opts[] = {
+    {"log-level", required_argument, 0, 'g'},
+    {"log-file", required_argument, 0, 'f'},
+  };
+
+  while (1) {
+
+    opt = getopt_long(argc, argv, "g:f:", long_opts, NULL);
+
+    if (opt == -1) break;
+
+    switch (opt) {
+    case 'g':
+      log_level = optarg;
+      break;
+    case 'f':
+      log_filename = optarg;
+      break;
+    case '?':
+      break;
+    }
+  }
 
   // Logging setup
-  log_init();
-  log_set_level(LOG_LEVEL);
+  log_init(log_level, log_filename);
+
+  
+  while (optind < argc)
+    log_warn("Ignoring unrecognized argument: %s", argv[optind++]);
 
   // Start lemonbar
-  log_info("Starting lemonbar");
-  pipe(bar_pipes);
-  pipe(bar_pipes+2);
-  bar_pid = fork();
-
-  if (bar_pid == 0) {
-    // Bar process
-    close(bar_pipes[0]); // read end of read-pipe
-    close(bar_pipes[3]); // write end of write-pipe
-
-    dup2(bar_pipes[1], STDOUT_FILENO);
-    dup2(bar_pipes[1], STDERR_FILENO);
-    dup2(bar_pipes[2], STDIN_FILENO);
-
-    close(bar_pipes[1]);
-    close(bar_pipes[2]);
-
-    // ask kernel to deliver SIGTERM in case the parent dies
-    prctl(PR_SET_PDEATHSIG, SIGTERM);
-    
-    execvp("lemonbar", bar_command);
-    perror("Exec lemonbar");
-    exit(EXIT_FAILURE);
-  }
+  init_bar();
   
   // Setup epoll
   if ((epoll_fd = epoll_create1(0)) == -1) {
@@ -215,7 +258,7 @@ int main () {
 	  perror("read bytes");
 	  exit(EXIT_FAILURE);
 	}
-	BUF[nb] = '\0';
+	BUF[strcspn(BUF, "\r\n")] = '\0';
 	process_command(BUF);
 	continue;
       }
@@ -225,30 +268,37 @@ int main () {
 	perror("read bytes");
 	exit(EXIT_FAILURE);
       }
-      log_debug("Got %s from %d", output.data, output.id);
+      log_info("%d-Received: \"%s\"", output.id, output.data);
       strncpy(output.id < num_lblocks ? lblock_mods[output.id].data
 	      : rblock_mods[output.id-num_lblocks].data,
 	      output.data, 512);
     }
-    /* Left Blocks */
+
+    // HACK: Should modules handle monitors individually?
     write(bar_pipes[3], "%{l}", 4);
     for (int i = 0; i < num_lblocks; i++) {
-      if (i) write(bar_pipes[3], "|", 1);
-      write(bar_pipes[3], lblock_mods[i].data, strlen(lblock_mods[i].data));
+      write(bar_pipes[3], lblock_mods[i].data,
+	    strlen(lblock_mods[i].data));
     }
 
-    /* Right Blocks */
-    write(bar_pipes[3], "%{r}", 4);
-    for (int i = 0; i < num_rblocks; i++) {
-      if (i) write(bar_pipes[3], "|", 1);
-      write(bar_pipes[3], rblock_mods[i].data, strlen(rblock_mods[i].data));
-    }
+    write(bar_pipes[3], "%{S0}", 5);
+    for (int m = 0; m < NUM_MONITORS; m++) {
+      /* Left Blocks */
 
+      write(bar_pipes[3], "%{r}", 4);
+      for (int i = 0; i < num_rblocks; i++) {
+	if (i) write(bar_pipes[3], "|", 1);
+	write(bar_pipes[3], rblock_mods[i].data,
+	      strlen(rblock_mods[i].data));
+      }
+      write(bar_pipes[3], "%{S+}", 5);
+    }
+    
     /* Write to bar_pipes[3] */
     write(bar_pipes[3], "\n", 1);
   }
   
   pclose(bar_fd);
-  pthread_mutex_destroy(&log_lock);
+  log_destroy();
   return 0;
 }

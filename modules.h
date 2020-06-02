@@ -1,6 +1,9 @@
 #ifndef MODULE_H_
 #define MODULE_H_
 
+#define NUM_DESKTOPS 10
+#define NUM_MONITORS 1
+
 // Config definition of a module
 typedef struct block_def {
   void *(*func) (void *);  // Function
@@ -29,6 +32,13 @@ extern int num_monitors;
 
 /***********BLOCKS************/
 
+void *battery_block(void *input);
+typedef struct battery_arg {
+  int dt;
+  int bat_crit, bat_warn;
+} battery_arg;
+extern battery_arg battery_args;
+
 /*           CLOCK           */
 void *clock_block(void *input);
 typedef struct clock_arg {
@@ -49,9 +59,16 @@ extern cpu_arg cpu_args;
 /*           DESKTOP         */
 void *desktop_block(void *input);
 typedef struct desktop_arg {
-  int num_desktops;
+  int nd;
 } desktop_arg;
 extern desktop_arg desktop_args;
+
+/*            MAIL           */
+typedef struct mail_arg {
+  const char *command;
+} mail_arg;
+extern mail_arg mail_args;
+void *mail_block(void *input);
 
 
 /*           MEMORY          */

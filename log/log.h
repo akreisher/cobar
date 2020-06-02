@@ -32,6 +32,6 @@ void log_set_quiet(int enable);
 
 void log_log(int level, const char *file, int line, const char *fmt, ...);
 
-void log_init();
-
+void log_init(const char *log_level, const char *log_filename);
+void log_destroy();
 #endif

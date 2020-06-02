@@ -2,6 +2,8 @@ CC=gcc
 
 LOGDIR=log
 
+USE_COLOR?=-DLOG_USE_COLOR
+
 .PHONY: debug cobar
 .INTERMEDIATE: bspwm.o log.o modules.o
 
@@ -23,7 +25,7 @@ bspwm.o: bspwm.c modules.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 log.o: $(LOGDIR)/log.c $(LOGDIR)/log.h
-	$(CC) $(CFLAGS) -DLOG_USE_COLOR -c -o $@ $<
+	$(CC) $(CFLAGS) $(USE_COLOR) -c -o $@ $<
 
 install: all
 	cp -f cobar ~/.local/bin/cobar

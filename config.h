@@ -4,8 +4,6 @@
 #include "modules.h"
 
 /* SETTINGS */
-#define NUM_MONITORS 1
-#define NUM_DESKTOPS 10
 
 #ifndef LOG_LEVEL
 #define LOG_LEVEL LOG_WARN
@@ -13,16 +11,22 @@
 
 /* Bar Options */
 #define BACKGROUND_COLOR "#000000"
-#define RESOLUTION "1920x28"
+#define RESOLUTION "3840x28"
 #define HEIGHT 28
 #define WIDTH 1920
 #define SCREEN_HEIGHT 1080
-#define FONT "SourceCodePro"
+#define FONT "SourceCodePro:size=8"
 
 /* ARGS */
+battery_arg battery_args = {
+  .dt = 5,
+  .bat_crit = 10,
+  .bat_warn = 30,
+};
+
 clock_arg clock_args = {
-    .dt = 60,
-    .time_format="%%{F#FFFFFF} %b %d %R %%{F-}%%{B-}"
+  .dt = 1,
+  .time_format = "%%{F#FFFFFF} %b %d %T %%{F-}%%{B-}"
 };
 
 cpu_arg cpu_args = {
@@ -31,8 +35,12 @@ cpu_arg cpu_args = {
   .cpu_warn = 80,
 };
 
+mail_arg mail_args = {
+  .command = "mu find date:1w..now maildir:/INBOX flag:unread 2>/dev/null | wc -l"
+};
+
 mem_arg mem_args = {
-    .dt = 5,
+  .dt = 5,
 };
 
 temp_arg temp_args = {
@@ -47,7 +55,7 @@ vol_arg vol_args = {
 };
 
 desktop_arg desktop_args = {
-  .num_desktops = 10,
+  .nd = 10,
 };
 
 
@@ -63,9 +71,12 @@ block_def lblocks[] = {
 };
 
 block_def rblocks[] = {
+
+  // {mail_block,     9},
   {vol_block,      2},
   {temp_block,    -1},
   {cpu_block,     -1},
+  // {battery_block, -1},
   {clock_block,   -1},
   // { mem_block,    (void *) &mem_args,    NULL },
   // { tray_block,   (void *) &tray_args,   NULL },

@@ -20,6 +20,7 @@
  * IN THE SOFTWARE.
  */
 
+#include <errno.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -30,21 +31,61 @@
 #include "log.h"
 
 /* Cobar Specific */
+static FILE *log_file = NULL;
 static pthread_mutex_t log_lock = PTHREAD_MUTEX_INITIALIZER;
 
-static void log_lock_fn(void *udata, int lock) {
-  if (lock)
+static void log_lock_fn(void *udata, int lock_q) {
+  if (lock_q)
     pthread_mutex_lock((pthread_mutex_t *) udata);
   else
     pthread_mutex_unlock((pthread_mutex_t *) udata);
 }
 
-void log_init() {
+void log_init(const char *log_level, const char *log_filename) {
+  int level = LOG_WARN;
+
+  if (log_level) {
+    if (!strcmp(log_level, "trace") || !strcmp(log_level, "TRACE"))
+      level = LOG_TRACE;
+    else if (!strcmp(log_level, "debug") || !strcmp(log_level, "DEBUG"))
+      level = LOG_DEBUG;
+    else if (!strcmp(log_level, "info") || !strcmp(log_level, "INFO"))
+      level = LOG_INFO;
+    else if (!strcmp(log_level, "warn") || !strcmp(log_level, "WARN"))
+      level = LOG_WARN;
+    else if (!strcmp(log_level, "error") || !strcmp(log_level, "ERROR"))
+      level = LOG_ERROR;
+    else if (!strcmp(log_level, "fatal") || !strcmp(log_level, "FATAL"))
+      level = LOG_FATAL;
+    else if (!strcmp(log_level, "error") || !strcmp(log_level, "ERROR"))
+      level = LOG_ERROR;
+  }
+  
+  pthread_mutex_init(&log_lock, NULL);
   log_set_lock(log_lock_fn);
   log_set_udata(&log_lock);
+  log_set_level(level);
+
+  if (log_filename) {
+    log_file = fopen(log_filename, "w");
+    if (!log_file)
+      log_error("Unable to open log file %s: %s", log_filename,
+                strerror(errno));
+    else
+      log_set_fp(log_file);
+  }
+}
+
+void log_destroy() {
+  if (log_file) {
+    log_lock_fn(&log_lock, 0);
+    fclose(log_file);
+    log_lock_fn(&log_lock, 1);
+  }
 }
 
 /* Start original log.c */
+
 static struct {
   void *udata;
   log_LockFn lock;

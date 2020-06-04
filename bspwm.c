@@ -1,3 +1,4 @@
+#include <errno.h>
 #include <fcntl.h>
 #include <libgen.h>
 #include <time.h>
@@ -21,6 +22,8 @@ typedef unsigned long int uli;
   (fscanf(fd_id, "%lx", &st.id) \
    && fgets(st.name, MAX_NAME_LEN, fd_names))
 
+/* Flags shared by monitors/desktops
+   Not all may be applicable */
 enum flags {
   FREE     = 0,
   FOCUSED  = 1 << 0,
@@ -29,22 +32,25 @@ enum flags {
   MONOCLE  = 1 << 4,
 };
 
+
 struct desktop_info {
   char name[MAX_NAME_LEN];
   uli id;
   int flags;
+  int n_node;
 };
+
 
 struct monitor_info {
   char name[MAX_NAME_LEN];
   uli id;
   int flags;
-  struct desktop_info dts[NUM_DESKTOPS];
+  int n_desktops;
+  struct desktop_info dts[MAX_DESKTOPS];
 };
 
-static struct monitor_info monitors[NUM_MONITORS];
 
-static void get_wm_state() {
+static void get_wm_state(struct monitor_info *monitors) {
   /* Fill in the monitors array with current BSPWM data. */
   int i, j;
   FILE *fd_id, *fd_names;
@@ -53,7 +59,7 @@ static void get_wm_state() {
   fd_id = popen("bspc query -M", "r");
   fd_names = popen("bspc query --names -M", "r");
   log_debug("Getting BSPWM state");
-  for (i = 0; i < NUM_MONITORS; i++) {
+  for (i = 0; i < MAX_MONITORS; i++) {
     if (GET_ID_NAME(monitors[i], fd_id, fd_names)) {
       monitors[i].name[strcspn(monitors[i].name, "\r\n")] = '\0';
       log_debug("Monitor: %s", monitors[i].name);		
@@ -67,12 +73,12 @@ static void get_wm_state() {
   pclose(fd_id);
   pclose(fd_names);
 
-  for (i = 0; i < NUM_MONITORS && monitors[i].id; i++) {
+  for (i = 0; i < MAX_MONITORS && monitors[i].id; i++) {
     sprintf(cmd, "bspc query -D -m %s", monitors[i].name);
     fd_id = popen(cmd, "r");
     sprintf(cmd, "bspc query -D -m %s --names", monitors[i].name);
     fd_names = popen(cmd, "r");
-    for (j = 0; j < NUM_DESKTOPS; j++) {
+    for (j = 0; j < MAX_DESKTOPS; j++) {
       if (GET_ID_NAME(monitors[i].dts[j], fd_id, fd_names)) {
 	monitors[i].dts[j].name[strcspn(monitors[i].dts[j].name, "\r\n")] = '\0';
 	log_debug("Desktop: %s", monitors[i].dts[j].name);
@@ -85,15 +91,16 @@ static void get_wm_state() {
     }
     pclose(fd_id);
     pclose(fd_names);
+
   }
 }
 
-static void get_desktop_output(char *out) {
+static void get_desktop_output(char *out, struct monitor_info *monitors) {
   /* Generate desktop output based on the current monitors value. */
   int i, j, num;
-  for (i = 0; i < NUM_MONITORS && monitors[i].id; i++) {
+  for (i = 0; i < MAX_MONITORS && monitors[i].id; i++) {
     out += sprintf(out, "%%{S%d}", i);
-    for (j = 0; j < NUM_DESKTOPS && monitors[i].dts[j].id; j++) {
+    for (j = 0; j < MAX_DESKTOPS && monitors[i].dts[j].id; j++) {
       if (monitors[i].dts[j].flags) {
 
 	/* Add clickable command */
@@ -104,8 +111,9 @@ static void get_desktop_output(char *out) {
 	}
 	
 	else if (monitors[i].dts[j].flags & FOCUSED) {
-	  if (monitors[i].flags & MONOCLE)
-	    out += sprintf(out, "%%{F#00FFFF}");
+	  log_debug("NUm here %d", monitors[i].dts[j].n_node);
+	  if ((monitors[i].flags & MONOCLE) && monitors[i].dts[j].n_node > 1)
+	    out += sprintf(out, "%%{F#FFFF00}");
 	  else
 	    out += sprintf(out, "%%{F#FFFFFF}");
 	}
@@ -134,9 +142,11 @@ static void get_desktop_output(char *out) {
   }
 }
 
-void desktop_event(FILE *bspc_fd) {
-  static char event[256], name[16], *ptr;
-  int i, j;
+void desktop_event(FILE *bspc_fd, struct monitor_info *monitors) {
+  static char event[256], name[MAX_NAME_LEN], command[64];
+  char *ptr;
+  int i, j, focused;
+  FILE *query;
 
   fgets(event, 256, bspc_fd);
   event[strcspn(event, "\r\n")] = '\0';
@@ -168,6 +178,7 @@ void desktop_event(FILE *bspc_fd) {
       break;
     }
     case 'O': {
+      focused = j;
       monitors[i].dts[j++].flags = OCCUPIED | FOCUSED;
       break;
     }
@@ -176,6 +187,7 @@ void desktop_event(FILE *bspc_fd) {
       break;
     }
     case 'F': {
+      focused = j;
       monitors[i].dts[j++].flags = FOCUSED;
       break;
     }
@@ -198,28 +210,38 @@ void desktop_event(FILE *bspc_fd) {
     /* Jump to next section */
     ptr = strpbrk(ptr+1, ":");
   }
+
+  /* Get number of nodes if focused */
+  sprintf(command, "bspc query -N -n .leaf.tiled -d %s | wc -l",
+	  monitors[i].dts[focused].name);
+  log_debug("Running %s", command);
+  query = popen(command, "r");
+  if (fscanf(query, "%d", &monitors[i].dts[focused].n_node) != 1) {
+    log_error("Bspc query # nodes: %s", strerror(errno));
+    exit(EXIT_FAILURE);
+  }
+  log_debug("Number of nodes: %d", monitors[i].dts[j].n_node);
 }
 
 void *desktop_block (void *input) {
   char buf[512];
   FILE *bspc_fd;
+  struct monitor_info monitors[MAX_MONITORS];
 
   block_input *in;
   block_output out;
-    
-    
   in = (block_input *) input;
   init_output(in, &out);
 
-  get_wm_state();
+  get_wm_state(monitors);
 
   bspc_fd = popen("bspc subscribe report", "r");
   while (1) {
-    get_desktop_output(buf);
+    get_desktop_output(buf, monitors);
     snprintf(out.data, 400, "%%{F#808080} %s %%{F-}%%{B-}", buf);
     write_data(&out);
     // Wait for desktop focus change
-    desktop_event(bspc_fd);
+    desktop_event(bspc_fd, monitors);
   }
 
   pclose(bspc_fd);

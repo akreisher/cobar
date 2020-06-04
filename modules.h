@@ -1,8 +1,8 @@
 #ifndef MODULE_H_
 #define MODULE_H_
 
-#define NUM_DESKTOPS 10
-#define NUM_MONITORS 1
+#define MAX_MONITORS 1
+#define MAX_DESKTOPS 10  /* Per monitor */
 
 // Config definition of a module
 typedef struct block_def {

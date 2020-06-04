@@ -282,7 +282,7 @@ int main (int argc, char *argv[]) {
     }
 
     write(bar_pipes[3], "%{S0}", 5);
-    for (int m = 0; m < NUM_MONITORS; m++) {
+    for (int m = 0; m < MAX_MONITORS; m++) {
       /* Left Blocks */
 
       write(bar_pipes[3], "%{r}", 4);

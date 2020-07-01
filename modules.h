@@ -4,51 +4,83 @@
 #define MAX_MONITORS 1
 #define MAX_DESKTOPS 10  /* Per monitor */
 
-// Config definition of a module
+#define TEXT_LEN 32
+
+enum blocks {
+  BATTERY = 0,
+  CLOCK,
+  CPU,
+  DESKTOP,
+  MAIL,
+  MEMORY,
+  TEMP,
+  VOLUME,
+  BLOCK_COUNT
+};
+
+
+// External Config definition of a module
 typedef struct block_def {
-  void *(*func) (void *);  // Function
-  int sigrt_num;  // Signal to handle
-} block_def;
+  enum blocks id;
+  int signum;
+  } block_def;
+
+// Text block
+typedef struct block_text {
+  char label[TEXT_LEN];
+  char text[TEXT_LEN];
+  char command[TEXT_LEN];
+  int color;
+  int monitor;
+} block_text;
 
 // Input to a block module
 typedef struct block_input {
-  int id;
-  int infd;
-  int outfd;
+  enum blocks id;
+  int nt;
+  int pipes[2];
 } block_input;
 
-// Output of a block module
-typedef struct block_output {
-  int id;
-  int fd;
-  char data[512];
-} block_output;
-
-void init_output(const block_input *input, block_output *output);
-void write_data(const block_output *output);
-
-extern int num_monitors;
+// Internal block state
+typedef struct block_internal {
+  enum blocks id;
+  int pipes[2];
+  int nt;
+  block_text *text;
+} block_internal;
 
 
-/***********BLOCKS************/
+/* Initialize block data */
+void init_internal(const void *input, block_internal *internal);
+void init_text(block_text *text);
+/* Write blcok data to main thread */
+void write_data(const block_internal *output);
 
-void *battery_block(void *input);
+void *(*get_block_func (enum blocks id))(void *);
+
+
+#define SET_LABEL(text, l) strncpy(text.label, l ? l : "", TEXT_LEN)
+#define SET_COMMAND(text, c) strncpy(text.command, c ? c : "", TEXT_LEN)
+#define SET_COLOR(text, c) text.color = c
+
+
+/* BLOCKS */
+
+/* BATTERY */
 typedef struct battery_arg {
   int dt;
   int bat_crit, bat_warn;
 } battery_arg;
 extern battery_arg battery_args;
 
-/*           CLOCK           */
-void *clock_block(void *input);
+/* CLOCK */
 typedef struct clock_arg {
   int dt;
   const char *time_format;
 } clock_arg;
 extern clock_arg clock_args;
 
-/*             CPU           */
-void *cpu_block(void *input);
+/* CPU */
 typedef struct cpu_arg {
   int dt;
   float cpu_crit, cpu_warn;
@@ -56,31 +88,29 @@ typedef struct cpu_arg {
 extern cpu_arg cpu_args;
 
 
-/*           DESKTOP         */
-void *desktop_block(void *input);
+/* DESKTOP */
+extern void *desktop_block(void *input);
 typedef struct desktop_arg {
   int nd;
+  
 } desktop_arg;
 extern desktop_arg desktop_args;
 
-/*            MAIL           */
+/* MAIL */
 typedef struct mail_arg {
   const char *command;
 } mail_arg;
 extern mail_arg mail_args;
-void *mail_block(void *input);
 
 
-/*           MEMORY          */
-void *mem_block(void *input);
+/* MEMORY */
 typedef struct mem_arg {
   int dt;
 } mem_arg;
 extern mem_arg mem_args;
 
 
-/*        TEMPERATURE        */
-void *temp_block(void *input);
+/* TEMPERATURE */
 typedef struct temp_arg {
   int dt;
   float T_crit, T_warn;
@@ -89,8 +119,7 @@ typedef struct temp_arg {
 extern temp_arg temp_args;
 
 
-/*          VOLUME          */
-void *vol_block(void *input);
+/* VOLUME */
 typedef struct vol_arg {
   int dt;
 } vol_arg;

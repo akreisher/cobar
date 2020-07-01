@@ -10,12 +10,12 @@
 #endif
 
 /* Bar Options */
-#define BACKGROUND_COLOR "#000000"
-#define RESOLUTION "3840x28"
+#define BACKGROUND_COLOR "#00000000"
+#define RESOLUTION "1890x28+15+3"
 #define HEIGHT 28
 #define WIDTH 1920
 #define SCREEN_HEIGHT 1080
-#define FONT "SourceCodePro:size=8"
+#define FONT "SourceCodePro"
 
 /* ARGS */
 battery_arg battery_args = {
@@ -26,7 +26,7 @@ battery_arg battery_args = {
 
 clock_arg clock_args = {
   .dt = 1,
-  .time_format = "%%{F#FFFFFF} %b %d %T %%{F-}%%{B-}"
+  .time_format = "%b %d %T"
 };
 
 cpu_arg cpu_args = {
@@ -59,6 +59,11 @@ desktop_arg desktop_args = {
 };
 
 
+block_def left_blocks[] = {
+  {DESKTOP, -1}
+};
+
+
 /* tray_arg tray_args = { */
 /*     .dt = 0, */
 /*     .x_pos = WIDTH - HEIGHT, */
@@ -66,20 +71,13 @@ desktop_arg desktop_args = {
 /*     .icon_size = HEIGHT */
 /* }; */
 
-block_def lblocks[] = {
-  {desktop_block, -1},
-};
 
-block_def rblocks[] = {
-
-  // {mail_block,     9},
-  {vol_block,      2},
-  {temp_block,    -1},
-  {cpu_block,     -1},
-  // {battery_block, -1},
-  {clock_block,   -1},
-  // { mem_block,    (void *) &mem_args,    NULL },
-  // { tray_block,   (void *) &tray_args,   NULL },
+block_def right_blocks[] = {
+  {MAIL,     9},
+  {VOLUME,   2},
+  {TEMP,    -1},
+  {CPU,     -1},
+  {CLOCK,   -1},
 };
 
 #endif

@@ -2,6 +2,7 @@
 #include <libgen.h>
 #include <time.h>
 #include <pthread.h>
+#include <sensors/sensors.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -11,6 +12,7 @@
 #include <unistd.h>
 
 #include "modules.h"
+#include "log/log.h"
 
 
 static const char *get_label(enum blocks id);
@@ -60,7 +62,7 @@ void *battery_block(void *input) {
 
   while (1) {
     fscanf(f, "%d", &cap);
-  
+
     if      (cap <= battery_args.bat_crit) SET_COLOR(block.text[0], 0xFF0000);
     else if (cap <= battery_args.bat_warn) SET_COLOR(block.text[0], 0xFFFC00);
     else                                   SET_COLOR(block.text[0], 0xFFFFFF);
@@ -171,7 +173,7 @@ void *mail_block (void *input) {
     read(block.pipes[0], block.text[0].text, 1);
   }
 
-  
+
 }
 
 void *mem_block (void *input) {
@@ -200,24 +202,60 @@ void *mem_block (void *input) {
 void *temp_block (void *input) {
 
   char *color;
-  char command[64] = "sensors -u ";
-  FILE *sensors_fd;
-  float temp;
+  sensors_chip_name match;
+  const sensors_chip_name *chip;
+  const sensors_feature *f;
+  const sensors_subfeature *sf;
+  int nc = 0, nf = 0, nsf = 0;
+  int temp_sf = -1;
+  double temp;
 
   block_internal block;
   init_internal(input, &block);
 
-  strncat(command, temp_args.chip, 48);
+  if (sensors_init(NULL)) {
+	log_error("sensor init");
+    exit(EXIT_FAILURE);
+  }
+
+  if (sensors_parse_chip_name(temp_args.chip, &match)) {
+    log_error("parse name\n");
+    exit(EXIT_FAILURE);
+  }
+
+  // Use first matching chip
+  if (!(chip = sensors_get_detected_chips(&match, &nc))) {
+	log_error("get_chip");
+	exit(EXIT_FAILURE);
+  }
+
+  while ((f = sensors_get_features(chip, &nf))) {
+
+	if (temp_sf >= 0) break;
+	if (f->type != SENSORS_FEATURE_TEMP) continue;
+
+	while ((sf = sensors_get_all_subfeatures(chip, f, &nsf))) {
+
+	  if (temp_sf >= 0) break;
+	  if (sf->type != SENSORS_SUBFEATURE_TEMP_INPUT) continue;
+
+	  if (sensors_get_value(chip, nsf, &temp)) {
+		log_error("sensor read");
+		exit(EXIT_FAILURE);
+	  }
+
+	  temp_sf = nsf;
+	  break;
+	}
+
+  }
 
   while (1) {
 
-    sensors_fd = popen(command, "r");
-
-    while (fgets(block.text[0].text, TEXT_LEN, sensors_fd)) {
-      if (sscanf(block.text[0].text, "  temp1_input: %f", &temp))
-	break;
-    }
-    pclose(sensors_fd);
+	if (sensors_get_value(chip, temp_sf, &temp)) {
+		log_error("sensor read");
+		exit(EXIT_FAILURE);
+	}
 
     if (temp > temp_args.T_crit)
       SET_COLOR(block.text[0], 0xFF0000);
@@ -230,6 +268,9 @@ void *temp_block (void *input) {
     write_data(&block);
     sleep(temp_args.dt);
   }
+
+  sensors_free_chip_name(&match);
+  sensors_cleanup();
 }
 
 void *vol_block(void *input) {
@@ -336,7 +377,7 @@ const char *get_label(enum blocks id) {
   case MEMORY:
     return "MEM";
   case TEMP:
-    return "TEMP";
+    return NULL;
   case VOLUME:
     return "VOL";
   default:

@@ -1,8 +1,10 @@
-CC=gcc
+CC = gcc
 
-LOGDIR=log
+CFLAGS := -lsensors -pthread
 
-USE_COLOR?=-DLOG_USE_COLOR
+LOGDIR = log
+
+USE_COLOR ?= -DLOG_USE_COLOR
 
 .PHONY: debug cobar
 .INTERMEDIATE: bspwm.o log.o modules.o
@@ -10,13 +12,13 @@ USE_COLOR?=-DLOG_USE_COLOR
 all: cobar
 
 cobar: cobar.c modules.o bspwm.o log.o config.h
-	$(CC) $(CFLAGS) -pthread -o $@ $^
+	$(CC) $(CFLAGS)  -o $@ $^
 
 debug: cobar.c modules.o bspwm.o log.o config.h
-	$(CC) $(CFLAGS) -g -DLOG_LEVEL=LOG_DEBUG -pthread -o cobar $^
+	$(CC) $(CFLAGS) -g -DLOG_LEVEL=LOG_DEBUG -o cobar $^
 
 test: test.c modules.o config.h
-	$(CC) $(CFLAGS) -pthread -o $@ $^
+	$(CC) $(CFLAGS) -o $@ $^
 
 modules.o: modules.c modules.h
 	$(CC) $(CFLAGS) -c -o $@ $<
